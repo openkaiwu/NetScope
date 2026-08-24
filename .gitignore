@@ -1,0 +1,13 @@
+.vs/
+.idea/
+bin/
+obj/
+**/bin/
+**/obj/
+artifacts/*
+!artifacts/.gitkeep
+*.user
+*.suo
+*.nupkg
+TestResults/
+design/qa/*.tmp.png

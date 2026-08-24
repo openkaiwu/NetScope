@@ -1,0 +1,21 @@
+<UserControl x:Class="NetScope.App.Views.PortView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="clr-namespace:NetScope.App.Views">
+    <Grid Margin="24,18,24,22">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <Grid Margin="0,0,0,10">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <StackPanel><TextBlock Text="端口工作台" FontSize="26" FontWeight="SemiBold"/><StackPanel Orientation="Horizontal" Margin="0,5,0,0"><Ellipse Width="8" Height="8" Fill="{DynamicResource SuccessBrush}" Margin="0,0,7,0"/><TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource TextSecondaryBrush}"/></StackPanel></StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button Style="{StaticResource SecondaryButtonStyle}" Command="{Binding RefreshCommand}" Content="刷新" Margin="0,0,8,0"/>
+                <Button Style="{StaticResource PrimaryButtonStyle}" Content="暂停 / 恢复" Click="Pause_Click"/>
+            </StackPanel>
+        </Grid>
+        <TabControl Grid.Row="1" Background="Transparent" BorderThickness="0">
+            <TabItem Header="实时占用"><views:PortLiveView/></TabItem>
+            <TabItem Header="端口百科"><views:PortCatalogView/></TabItem>
+            <TabItem Header="可用端口"><views:PortAvailabilityView/></TabItem>
+        </TabControl>
+    </Grid>
+</UserControl>

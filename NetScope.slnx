@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/NetScope.App/NetScope.App.csproj" />
+    <Project Path="src/NetScope.Core/NetScope.Core.csproj" />
+    <Project Path="src/NetScope.Windows/NetScope.Windows.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/NetScope.Tests/NetScope.Tests.csproj" />
+  </Folder>
+</Solution>

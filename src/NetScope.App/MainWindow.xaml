@@ -1,0 +1,73 @@
+<Window x:Class="NetScope.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:NetScope.App.ViewModels"
+        xmlns:views="clr-namespace:NetScope.App.Views"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        Title="NetScope" Icon="Assets/NetScope.ico" Width="1180" Height="760" MinWidth="920" MinHeight="620"
+        WindowStartupLocation="CenterScreen" WindowStyle="None" ResizeMode="CanResize"
+        Background="{DynamicResource CanvasBrush}">
+    <Window.Resources>
+        <DataTemplate DataType="{x:Type vm:PortViewModel}"><views:PortView/></DataTemplate>
+        <DataTemplate DataType="{x:Type vm:DiagnosticViewModel}"><views:DiagnosticView/></DataTemplate>
+        <DataTemplate DataType="{x:Type vm:SettingsViewModel}"><views:SettingsView/></DataTemplate>
+
+        <Style x:Key="NavButtonStyle" TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+            <Setter Property="Height" Value="44"/>
+            <Setter Property="Margin" Value="8,3"/>
+            <Setter Property="Padding" Value="14,0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+    </Window.Resources>
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="42" ResizeBorderThickness="6" CornerRadius="0" GlassFrameThickness="0"/>
+    </shell:WindowChrome.WindowChrome>
+
+    <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Background="{DynamicResource CanvasBrush}">
+        <Grid>
+            <Grid.RowDefinitions><RowDefinition Height="42"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+            <Border Grid.Row="0" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                <Grid>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0">
+                        <Image Source="Assets/NetScope.png" Width="27" Height="27" RenderOptions.BitmapScalingMode="HighQuality"/>
+                        <TextBlock Text="NetScope" FontSize="14" FontWeight="SemiBold" Margin="9,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                        <Button Width="46" Height="40" Background="Transparent" BorderThickness="0" FontFamily="{StaticResource FluentIcons}" Content="&#xE921;" Click="Minimize_Click"/>
+                        <Button Width="46" Height="40" Background="Transparent" BorderThickness="0" FontFamily="{StaticResource FluentIcons}" Content="&#xE922;" Click="Maximize_Click"/>
+                        <Button Width="46" Height="40" Background="Transparent" BorderThickness="0" FontFamily="{StaticResource FluentIcons}" Content="&#xE8BB;" Click="Close_Click"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="208"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <Border Grid.Column="0" Background="{DynamicResource SidebarBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
+                    <Grid Margin="0,12,0,10">
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                        <TextBlock Text="网络工作台" Margin="20,8,0,13" Foreground="{DynamicResource TextMutedBrush}" FontSize="11" FontWeight="SemiBold"/>
+                        <StackPanel Grid.Row="1">
+                            <Button Command="{Binding ShowPortsCommand}">
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock FontFamily="{StaticResource FluentIcons}" Text="&#xE968;" FontSize="16"/><TextBlock Grid.Column="1" Text="端口" FontWeight="SemiBold"/></Grid>
+                                <Button.Style><Style TargetType="Button" BasedOn="{StaticResource NavButtonStyle}"><Style.Triggers><DataTrigger Binding="{Binding SelectedNavigation}" Value="端口"><Setter Property="Background" Value="#DCEBFC"/><Setter Property="Foreground" Value="#1769C2"/></DataTrigger></Style.Triggers></Style></Button.Style>
+                            </Button>
+                            <Button Command="{Binding ShowDiagnosticCommand}">
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock FontFamily="{StaticResource FluentIcons}" Text="&#xE9D9;" FontSize="16"/><TextBlock Grid.Column="1" Text="诊断" FontWeight="SemiBold"/></Grid>
+                                <Button.Style><Style TargetType="Button" BasedOn="{StaticResource NavButtonStyle}"><Style.Triggers><DataTrigger Binding="{Binding SelectedNavigation}" Value="诊断"><Setter Property="Background" Value="#DCEBFC"/><Setter Property="Foreground" Value="#1769C2"/></DataTrigger></Style.Triggers></Style></Button.Style>
+                            </Button>
+                            <Button Command="{Binding ShowSettingsCommand}">
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock FontFamily="{StaticResource FluentIcons}" Text="&#xE713;" FontSize="16"/><TextBlock Grid.Column="1" Text="设置" FontWeight="SemiBold"/></Grid>
+                                <Button.Style><Style TargetType="Button" BasedOn="{StaticResource NavButtonStyle}"><Style.Triggers><DataTrigger Binding="{Binding SelectedNavigation}" Value="设置"><Setter Property="Background" Value="#DCEBFC"/><Setter Property="Foreground" Value="#1769C2"/></DataTrigger></Style.Triggers></Style></Button.Style>
+                            </Button>
+                        </StackPanel>
+                        <Border Grid.Row="2" Margin="12,0" Padding="12" CornerRadius="10" Background="#E4F5EC">
+                            <StackPanel><TextBlock Text="●  本地优先" Foreground="{DynamicResource SuccessBrush}" FontWeight="SemiBold"/><TextBlock Text="无账号 · 无遥测 · 不抓包" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0"/></StackPanel>
+                        </Border>
+                    </Grid>
+                </Border>
+                <ContentControl Grid.Column="1" Content="{Binding CurrentPage}"/>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

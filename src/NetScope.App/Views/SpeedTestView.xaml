@@ -1,0 +1,127 @@
+<UserControl x:Class="NetScope.App.Views.SpeedTestView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:converters="clr-namespace:NetScope.App.Converters">
+    <UserControl.Resources>
+        <converters:InverseBooleanConverter x:Key="InverseBool"/>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <Grid Margin="2,0,2,10">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock Text="真实网速测试" FontSize="18" FontWeight="SemiBold"/>
+                <TextBlock Text="独立测量下载、上传、空闲延迟和负载延迟；不会自动运行"
+                           Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,3,0,0"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button Content="取消测速" Command="{Binding CancelCommand}" Margin="0,0,8,0">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+                            <Style.Triggers><DataTrigger Binding="{Binding IsPerformanceRunning}" Value="False"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+                <Button Click="StartPerformanceTest_Click" Style="{StaticResource PrimaryButtonStyle}" IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}">
+                    <StackPanel Orientation="Horizontal"><TextBlock FontFamily="{StaticResource FluentIcons}" Text="&#xE9D2;" Margin="0,0,8,0"/><TextBlock Text="开始测速"/></StackPanel>
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <Border Grid.Row="1" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+            <ScrollViewer x:Name="SpeedScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Margin="22,18,22,22">
+                    <Border Background="{DynamicResource SurfaceAltBrush}" CornerRadius="10" Padding="16,13">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock FontFamily="{StaticResource FluentIcons}" Text="&#xE701;" Foreground="{DynamicResource AccentBrush}" FontSize="18" Margin="0,0,9,0"/>
+                                    <TextBlock Text="当前本地链路" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <TextBlock Text="{Binding LinkSpeedNote}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="27,4,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+                                <TextBlock Text="{Binding LinkSpeedText}" FontSize="21" FontWeight="SemiBold" HorizontalAlignment="Right"/>
+                                <TextBlock Text="链路速率 ≠ 公网实测" Foreground="{DynamicResource WarningBrush}" FontSize="10" HorizontalAlignment="Right"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource CardStyle}" BorderBrush="#BFD8FC" Padding="18" Margin="0,12,0,0">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding PerformanceStatusText}" FontSize="16" FontWeight="SemiBold"/>
+                                    <TextBlock Text="Cloudflare 边缘节点 · HTTPS 真实传输" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,3,0,0"/>
+                                </StackPanel>
+                                <TextBlock Grid.Column="1" Text="{Binding PerformanceProgress, StringFormat={}{0:0}%}" Foreground="{DynamicResource AccentBrush}" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            </Grid>
+                            <ProgressBar Height="7" Value="{Binding PerformanceProgress}" Maximum="100" Margin="0,12,0,0" Foreground="{DynamicResource AccentBrush}" Background="{DynamicResource BorderBrush}"/>
+                            <TextBlock Text="{Binding PerformanceSummary}" TextWrapping="Wrap" FontSize="15" FontWeight="SemiBold" Margin="0,13,0,0"/>
+                            <TextBlock Text="{Binding PerformanceTrafficText}" Foreground="{DynamicResource TextMutedBrush}" FontSize="10" Margin="0,5,0,0"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Grid Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Border Style="{StaticResource CardStyle}" Padding="18,15" Margin="0,0,6,0">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <Border Width="42" Height="42" CornerRadius="21" Background="#E8F2FF">
+                                    <TextBlock FontFamily="{StaticResource FluentIcons}" Text="&#xE896;" Foreground="{DynamicResource AccentBrush}" FontSize="19" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <StackPanel Grid.Column="1" Margin="13,0,0,0">
+                                    <TextBlock Text="下载速度" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11"/>
+                                    <TextBlock Text="{Binding DownloadSpeedText}" FontSize="25" FontWeight="SemiBold"/>
+                                    <TextBlock Text="节点 → 本机" Foreground="{DynamicResource TextMutedBrush}" FontSize="9"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                        <Border Grid.Column="1" Style="{StaticResource CardStyle}" Padding="18,15" Margin="6,0,0,0">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <Border Width="42" Height="42" CornerRadius="21" Background="#E7F7F0">
+                                    <TextBlock FontFamily="{StaticResource FluentIcons}" Text="&#xE898;" Foreground="{DynamicResource SuccessBrush}" FontSize="19" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <StackPanel Grid.Column="1" Margin="13,0,0,0">
+                                    <TextBlock Text="上传速度" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11"/>
+                                    <TextBlock Text="{Binding UploadSpeedText}" FontSize="25" FontWeight="SemiBold"/>
+                                    <TextBlock Text="本机 → 节点" Foreground="{DynamicResource TextMutedBrush}" FontSize="9"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </Grid>
+
+                    <UniformGrid Columns="3" Margin="0,12,0,0">
+                        <Border Style="{StaticResource CardStyle}" Padding="15,12" Margin="0,0,6,0">
+                            <StackPanel><TextBlock Text="空闲延迟" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11"/><TextBlock Text="{Binding IdleLatencyText}" FontSize="19" FontWeight="SemiBold" Margin="0,3,0,0"/><TextBlock Text="无传输负载" Foreground="{DynamicResource TextMutedBrush}" FontSize="9"/></StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource CardStyle}" Padding="15,12" Margin="2,0,4,0">
+                            <StackPanel><TextBlock Text="负载延迟" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11"/><TextBlock Text="{Binding LoadedLatencyText}" FontSize="17" FontWeight="SemiBold" Margin="0,4,0,0"/><TextBlock Text="下载 ↓ / 上传 ↑" Foreground="{DynamicResource TextMutedBrush}" FontSize="9"/></StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource CardStyle}" Padding="15,12" Margin="4,0,0,0">
+                            <StackPanel><TextBlock Text="Bufferbloat" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11"/><TextBlock Text="{Binding BufferbloatText}" FontSize="19" FontWeight="SemiBold" Margin="0,3,0,0"/><TextBlock Text="负载导致的延迟增量" Foreground="{DynamicResource TextMutedBrush}" FontSize="9"/></StackPanel>
+                        </Border>
+                    </UniformGrid>
+
+                    <Border Background="{DynamicResource SurfaceAltBrush}" CornerRadius="10" Padding="16,12" Margin="0,12,0,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock FontFamily="{StaticResource FluentIcons}" Text="&#xE946;" Foreground="{DynamicResource AccentBrush}" FontSize="17" Margin="0,1,10,0"/>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="测速流程与边界" FontWeight="SemiBold"/>
+                                <TextBlock Text="空闲延迟 → 下载吞吐 → 下载负载延迟 → 上传吞吐 → 上传负载延迟 → Bufferbloat"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" FontSize="10" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                                <TextBlock Text="结果代表本机到当前边缘节点的当次表现，不等于运营商标称带宽；最多约 62 MB，结果仅在内存中保留。"
+                                           Foreground="{DynamicResource TextMutedBrush}" FontSize="9" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</UserControl>

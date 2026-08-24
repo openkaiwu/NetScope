@@ -1,0 +1,134 @@
+port,protocol,service,description,category,risk
+7,tcp,echo,回显测试服务,基础服务,high
+7,udp,echo,回显测试服务,基础服务,high
+9,tcp,discard,丢弃测试服务,基础服务,high
+13,tcp,daytime,日期时间服务,基础服务,high
+19,tcp,chargen,字符生成测试服务,基础服务,high
+20,tcp,ftp-data,FTP 主动模式数据传输,文件传输,high
+21,tcp,ftp,FTP 控制连接,文件传输,high
+22,tcp,ssh,SSH 安全远程登录与文件传输,远程管理,normal
+23,tcp,telnet,Telnet 明文远程终端,远程管理,high
+25,tcp,smtp,SMTP 邮件发送,邮件,normal
+37,tcp,time,网络时间协议旧版,基础服务,high
+42,tcp,nameserver,主机名称服务旧版,基础服务,high
+43,tcp,whois,WHOIS 注册信息查询,目录服务,normal
+49,tcp,tacacs,TACACS 认证服务,认证,normal
+53,tcp,domain,DNS 区域传输与大响应,名称解析,normal
+53,udp,domain,DNS 常规名称解析,名称解析,normal
+67,udp,bootps,DHCP 服务器,网络配置,normal
+68,udp,bootpc,DHCP 客户端,网络配置,normal
+69,udp,tftp,TFTP 简单文件传输,文件传输,high
+70,tcp,gopher,Gopher 文档服务,Web,high
+79,tcp,finger,Finger 用户信息查询,目录服务,high
+80,tcp,http,HTTP Web 通信,Web,normal
+88,tcp,kerberos,Kerberos 身份认证,认证,normal
+88,udp,kerberos,Kerberos 身份认证,认证,normal
+110,tcp,pop3,POP3 邮件接收,邮件,normal
+111,tcp,rpcbind,RPC 端口映射,系统服务,high
+111,udp,rpcbind,RPC 端口映射,系统服务,high
+119,tcp,nntp,网络新闻传输,消息,normal
+123,udp,ntp,NTP 网络时间同步,时间同步,normal
+135,tcp,msrpc,Microsoft RPC 端点映射,Windows,high
+137,udp,netbios-ns,NetBIOS 名称服务,Windows,high
+138,udp,netbios-dgm,NetBIOS 数据报服务,Windows,high
+139,tcp,netbios-ssn,NetBIOS 会话与旧式文件共享,Windows,high
+143,tcp,imap,IMAP 邮件接收,邮件,normal
+161,udp,snmp,SNMP 网络设备管理,网络管理,normal
+162,udp,snmptrap,SNMP Trap 通知,网络管理,normal
+179,tcp,bgp,BGP 路由协议,路由,normal
+194,tcp,irc,IRC 即时聊天,消息,normal
+389,tcp,ldap,LDAP 目录访问,目录服务,normal
+389,udp,ldap,LDAP 无连接目录访问,目录服务,normal
+427,tcp,svrloc,服务定位协议,发现,normal
+443,tcp,https,HTTPS 加密 Web 通信,Web,normal
+445,tcp,microsoft-ds,SMB 文件与打印共享,Windows,high
+465,tcp,submissions,SMTP 隐式 TLS 邮件提交,邮件,normal
+500,udp,isakmp,IPsec IKE 密钥协商,VPN,normal
+502,tcp,modbus,Modbus 工业控制通信,工业控制,high
+514,udp,syslog,Syslog 日志传输,日志,normal
+515,tcp,printer,LPD 打印服务,打印,normal
+520,udp,route,RIP 路由协议,路由,normal
+521,udp,ripng,RIPng IPv6 路由协议,路由,normal
+546,udp,dhcpv6-client,DHCPv6 客户端,网络配置,normal
+547,udp,dhcpv6-server,DHCPv6 服务器,网络配置,normal
+554,tcp,rtsp,RTSP 流媒体控制,流媒体,normal
+587,tcp,submission,SMTP 邮件提交,邮件,normal
+631,tcp,ipp,IPP 网络打印,打印,normal
+636,tcp,ldaps,LDAP over TLS 加密目录服务,目录服务,normal
+873,tcp,rsync,Rsync 文件同步,文件传输,normal
+902,tcp,vmware-auth,VMware 控制台与认证,虚拟化,normal
+989,tcp,ftps-data,FTPS 数据传输,文件传输,normal
+990,tcp,ftps,FTPS 控制连接,文件传输,normal
+993,tcp,imaps,IMAP over TLS 邮件接收,邮件,normal
+995,tcp,pop3s,POP3 over TLS 邮件接收,邮件,normal
+1080,tcp,socks,SOCKS 代理服务,代理,normal
+1194,udp,openvpn,OpenVPN 隧道,VPN,normal
+1433,tcp,ms-sql-s,Microsoft SQL Server,数据库,high
+1434,udp,ms-sql-m,SQL Server Browser,数据库,high
+1521,tcp,oracle,Oracle 数据库监听,数据库,high
+1701,udp,l2tp,L2TP VPN 隧道,VPN,normal
+1723,tcp,pptp,PPTP VPN 控制连接,VPN,high
+1812,udp,radius,RADIUS 身份认证,认证,normal
+1813,udp,radius-acct,RADIUS 计费,认证,normal
+1883,tcp,mqtt,MQTT 物联网消息,消息,normal
+1900,udp,ssdp,SSDP 即插即用设备发现,发现,high
+2049,tcp,nfs,NFS 网络文件系统,文件共享,high
+2049,udp,nfs,NFS 网络文件系统,文件共享,high
+2082,tcp,cpanel,cPanel 管理面板 HTTP,管理,high
+2083,tcp,cpanel-ssl,cPanel 管理面板 HTTPS,管理,high
+2181,tcp,zookeeper,Apache ZooKeeper 协调服务,分布式系统,normal
+2375,tcp,docker,Docker API 明文接口,容器,high
+2376,tcp,docker-s,Docker API TLS 接口,容器,normal
+3000,tcp,dev-http,常见开发 Web 服务端口,开发,normal
+3128,tcp,squid-http,Squid HTTP 代理,代理,normal
+3260,tcp,iscsi-target,iSCSI 存储目标,存储,normal
+3306,tcp,mysql,MySQL 数据库,数据库,high
+3389,tcp,ms-wbt-server,Windows 远程桌面 RDP,远程管理,high
+3478,udp,stun,STUN NAT 穿透,实时通信,normal
+3544,udp,teredo,Teredo IPv6 隧道,隧道,normal
+3690,tcp,svn,Subversion 版本控制,开发,normal
+4000,tcp,dev-http-4000,常见本地开发服务端口,开发,normal
+4369,tcp,epmd,Erlang 端口映射守护进程,分布式系统,normal
+4444,tcp,metasploit,常见远程控制或测试端口,安全敏感,high
+4500,udp,ipsec-nat-t,IPsec NAT 穿透,VPN,normal
+5000,tcp,dev-http-5000,常见开发与 API 服务端口,开发,normal
+5001,tcp,iperf,常见网络性能测试端口,网络测试,normal
+5060,tcp,sip,SIP 通信信令,实时通信,normal
+5060,udp,sip,SIP 通信信令,实时通信,normal
+5061,tcp,sips,SIP over TLS 通信信令,实时通信,normal
+5222,tcp,xmpp-client,XMPP 客户端消息,消息,normal
+5269,tcp,xmpp-server,XMPP 服务器互联,消息,normal
+5353,udp,mdns,mDNS 本地名称发现,发现,normal
+5355,udp,llmnr,LLMNR 本地名称解析,发现,high
+5432,tcp,postgresql,PostgreSQL 数据库,数据库,high
+5555,tcp,adb,Android Debug Bridge,开发,high
+5601,tcp,kibana,Kibana Web 控制台,监控,normal
+5671,tcp,amqps,AMQP over TLS 消息队列,消息,normal
+5672,tcp,amqp,AMQP 消息队列,消息,normal
+5900,tcp,vnc,VNC 远程桌面,远程管理,high
+5985,tcp,wsman,WinRM HTTP 远程管理,Windows,high
+5986,tcp,wsmans,WinRM HTTPS 远程管理,Windows,normal
+6379,tcp,redis,Redis 数据库,数据库,high
+6443,tcp,kubernetes-api,Kubernetes API Server,容器,high
+6667,tcp,irc,IRC 常用通信端口,消息,high
+6881,tcp,bittorrent,BitTorrent 对等传输,文件传输,normal
+6881,udp,bittorrent,BitTorrent DHT 与传输,文件传输,normal
+7001,tcp,weblogic,WebLogic 管理与应用服务,应用服务器,high
+7680,tcp,ms-do,Windows Delivery Optimization,Windows,normal
+7680,udp,ms-do,Windows Delivery Optimization,Windows,normal
+8000,tcp,dev-http-8000,常见开发 Web 服务端口,开发,normal
+8080,tcp,http-alt,HTTP 备用与开发服务端口,Web,normal
+8081,tcp,http-alt-8081,常见开发 Web 服务端口,开发,normal
+8443,tcp,https-alt,HTTPS 备用服务端口,Web,normal
+8888,tcp,dev-http-8888,常见开发与 Notebook 服务端口,开发,normal
+9000,tcp,dev-http-9000,常见开发与管理服务端口,开发,normal
+9090,tcp,prometheus,Prometheus 监控服务,监控,normal
+9200,tcp,elasticsearch,Elasticsearch HTTP API,搜索,high
+9300,tcp,elasticsearch-node,Elasticsearch 节点通信,搜索,normal
+9418,tcp,git,Git 原生传输协议,开发,normal
+11211,tcp,memcached,Memcached 缓存服务,缓存,high
+15672,tcp,rabbitmq-management,RabbitMQ 管理控制台,消息,high
+27017,tcp,mongodb,MongoDB 数据库,数据库,high
+31337,tcp,back-orifice,历史恶意远程控制端口,安全敏感,high
+32400,tcp,plex,Plex 媒体服务器,流媒体,normal
+47808,udp,bacnet,BACnet 楼宇自动化,工业控制,high
