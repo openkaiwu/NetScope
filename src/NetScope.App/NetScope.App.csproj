@@ -28,12 +28,25 @@
     <Platforms>x64</Platforms>
     <AssemblyName>NetScope</AssemblyName>
     <RootNamespace>NetScope.App</RootNamespace>
-    <Version>0.1.5</Version>
+    <Version>0.2.0</Version>
     <Product>NetScope</Product>
     <Description>轻量 Windows 端口管理与网络诊断工具</Description>
     <Authors>NetScope contributors</Authors>
     <NoWarn>$(NoWarn);WPF0001</NoWarn>
     <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
   </PropertyGroup>
+
+  <!-- 构建后把后台 Collector 可执行文件复制到 App 输出目录，保证同目录可发现 -->
+  <Target Name="StageCollector" AfterTargets="Build" Condition="'$(IsPublishing)' != 'true'">
+    <MSBuild Projects="$(MSBuildThisFileDirectory)..\NetScope.Collector\NetScope.Collector.csproj"
+             Targets="Build"
+             Properties="Configuration=$(Configuration)" />
+    <ItemGroup>
+      <_CollectorOutput Include="$(MSBuildThisFileDirectory)..\NetScope.Collector\bin\$(Configuration)\net10.0-windows\win-x64\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_CollectorOutput)"
+          DestinationFiles="$(OutDir)%(RecursiveDir)%(Filename)%(Extension)"
+          SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

@@ -12,6 +12,9 @@ public sealed record AppSettings
     public bool CloseToTray { get; init; } = true;
     public bool StartWithWindows { get; init; }
     public bool TelemetryEnabled { get; init; }
+    public bool HistoryEnabled { get; init; } = true;
+    public int HistoryRetentionDays { get; init; } = 7;
+    public bool BackgroundRecording { get; init; } = true;
     public ImmutableArray<DiagnosticTarget> DiagnosticTargets { get; init; } =
     [
         new("Microsoft", "www.microsoft.com"),
@@ -24,6 +27,7 @@ public sealed record AppSettings
         ForegroundRefreshMilliseconds = Math.Clamp(ForegroundRefreshMilliseconds, 500, 10_000),
         TrayRefreshMilliseconds = Math.Clamp(TrayRefreshMilliseconds, 1000, 30_000),
         TelemetryEnabled = false,
+        HistoryRetentionDays = HistoryRetentionDays is 1 or 7 or 14 or 30 ? HistoryRetentionDays : 7,
         DiagnosticTargets = DiagnosticTargets.IsDefaultOrEmpty
             ? [new("Microsoft", "www.microsoft.com"), new("Cloudflare", "www.cloudflare.com"), new("百度", "www.baidu.com")]
             : DiagnosticTargets

@@ -9,6 +9,7 @@
         Background="{DynamicResource CanvasBrush}">
     <Window.Resources>
         <DataTemplate DataType="{x:Type vm:PortViewModel}"><views:PortView/></DataTemplate>
+        <DataTemplate DataType="{x:Type vm:PerformanceViewModel}"><views:PerformanceView/></DataTemplate>
         <DataTemplate DataType="{x:Type vm:DiagnosticViewModel}"><views:DiagnosticView/></DataTemplate>
         <DataTemplate DataType="{x:Type vm:SettingsViewModel}"><views:SettingsView/></DataTemplate>
 
@@ -51,6 +52,10 @@
                             <Button Command="{Binding ShowPortsCommand}">
                                 <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock FontFamily="{StaticResource FluentIcons}" Text="&#xE968;" FontSize="16"/><TextBlock Grid.Column="1" Text="端口" FontWeight="SemiBold"/></Grid>
                                 <Button.Style><Style TargetType="Button" BasedOn="{StaticResource NavButtonStyle}"><Style.Triggers><DataTrigger Binding="{Binding SelectedNavigation}" Value="端口"><Setter Property="Background" Value="#DCEBFC"/><Setter Property="Foreground" Value="#1769C2"/></DataTrigger></Style.Triggers></Style></Button.Style>
+                            </Button>
+                            <Button Command="{Binding ShowPerformanceCommand}">
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock FontFamily="{StaticResource FluentIcons}" Text="&#xEC7A;" FontSize="16"/><TextBlock Grid.Column="1" Text="性能" FontWeight="SemiBold"/></Grid>
+                                <Button.Style><Style TargetType="Button" BasedOn="{StaticResource NavButtonStyle}"><Style.Triggers><DataTrigger Binding="{Binding SelectedNavigation}" Value="性能"><Setter Property="Background" Value="#DCEBFC"/><Setter Property="Foreground" Value="#1769C2"/></DataTrigger></Style.Triggers></Style></Button.Style>
                             </Button>
                             <Button Command="{Binding ShowDiagnosticCommand}">
                                 <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock FontFamily="{StaticResource FluentIcons}" Text="&#xE9D9;" FontSize="16"/><TextBlock Grid.Column="1" Text="诊断" FontWeight="SemiBold"/></Grid>

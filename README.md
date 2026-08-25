@@ -27,15 +27,29 @@ NetScope 是一款面向 Windows 10/11 的轻量端口管理与可视化网络�
 
 V0.1.5 仍不包含路由追踪、MTU、网络历史或逐进程带宽排行。当前测速结果表示“本机到所选边缘节点”的当次表现，不等同于运营商标称带宽，也不会在后台自动运行。
 
+## V0.2 性能事件记录与归因
+
+- 新增独立的“性能”工作区，位于“端口”与“诊断”之间；默认首页仍是端口工作台。
+- 后台 Collector 进程（`NetScope.Collector.exe`）随 App 同目录发布并常驻采样：系统与进程 1 秒、端口 2 秒；检测到疑似性能事件后自动进入 30–60 秒的 500ms 突发采样。
+- “刚才卡了”按钮把用户感受到的卡顿标记到事件流，与自动规则一起参与归因排序。
+- 事件引擎内置 4 条规则（CPU 争用、内存压力、IO 压力、网络劣化），经“正常 → 疑似 → 捕捉中 → 冷却”状态机运行，带冷却时间防止事件风暴；结论一律使用“可能/疑似”措辞，并附证据与可信度。
+- 影响度评分（Impact Score）综合 CPU、内存、IO、前台进程和用户标记位置对嫌疑进程排序；只排列证据、不下因果结论。
+- 事件时间线展示每个事件前 30 秒 → 发生中 → 后 30 秒的系统上下文；进程中心按时间曲线展示进程 CPU/内存/IO，并列出相关事件，支持搜索。
+- 性能历史写入 `%LocalAppData%\NetScope\data\netscope.db`（SQLite/WAL）；保留天数可在设置中调整（默认 7 天，支持 1/7/14/30），超过 24 小时的数据自动降采样为 30 秒粒度。
+- 历史记录默认开启，可在设置中关闭；记录、归因与存储全部本地完成，不上传、无账号。
+
+V0.2 记录并归因性能事件，仍不包含路由追踪、MTU 与逐进程实时网络带宽排行。
+
 安装、图标和默认页面说明见 [安装与使用说明](docs/安装与使用说明.md)。
 
 ## 工程结构
 
 ```text
-src/NetScope.App      WPF、MVVM、Fluent 外壳、托盘与可视化控件
-src/NetScope.Core     领域模型、搜索、差异计算、推荐与诊断编排
-src/NetScope.Windows  IP Helper、WLAN、网络探针、设置与日志
-tests/NetScope.Tests  核心与 Windows 集成测试
+src/NetScope.App       WPF、MVVM、Fluent 外壳、托盘与可视化控件
+src/NetScope.Core      领域模型、搜索、差异计算、推荐与诊断编排
+src/NetScope.Windows   IP Helper、WLAN、网络探针、设置、日志、性能采样与历史存储
+src/NetScope.Collector 后台性能事件记录器（常驻采样 + 事件引擎 + 管道 IPC）
+tests/NetScope.Tests   核心与 Windows 集成测试
 ```
 
 ## 构建
@@ -54,8 +68,10 @@ $dotnet = "$env:LOCALAPPDATA\NetScopeTools\dotnet\dotnet.exe"
 
 - 设置：`%LocalAppData%\NetScope\settings.json`
 - 日志：`%LocalAppData%\NetScope\logs`，最多 3×1MB
+- 性能历史：`%LocalAppData%\NetScope\data\netscope.db`（SQLite/WAL，默认保留 7 天）
 - 日志会脱敏 URL、SSID、MAC 与 IP 形式的数据
 - 快速诊断仅在用户点击后发起少量 DNS、ICMP、TCP/TLS 与 NCSI 请求，不下载测速文件
 - 真实测速必须单独确认，最多传输约 62MB；请求发送到 Cloudflare 测速节点，结果只保存在当前界面且不会写入日志
+- 性能采样与历史记录仅保存在本机，不上传；Collector 不会结束进程、不修改防火墙或系统网络配置
 
 端口注册数据可通过 `scripts/update-iana.ps1` 从 IANA 官方注册表刷新；仓库同时携带离线基础服务快照，确保无网络时仍可查询。

@@ -1,6 +1,6 @@
 param(
     [string]$Configuration = 'Release',
-    [string]$Version = '0.1.5'
+    [string]$Version = '0.2.0'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -24,6 +24,13 @@ if (Test-Path -LiteralPath $publishFull) { Remove-Item -LiteralPath $publishFull
 & $dotnet publish (Join-Path $repository 'src\NetScope.App\NetScope.App.csproj') -c $Configuration -r win-x64 --self-contained true --no-restore -m:1 -o $publish `
     -p:PublishReadyToRun=true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false
 if ($LASTEXITCODE -ne 0) { throw 'Publish failed.' }
+
+# 后台 Collector 与 App 同目录发布，CollectorLauncher 按 AppContext.BaseDirectory 发现 NetScope.Collector.exe
+& $dotnet publish (Join-Path $repository 'src\NetScope.Collector\NetScope.Collector.csproj') -c $Configuration -r win-x64 --self-contained true --no-restore -m:1 -o $publish `
+    -p:PublishReadyToRun=true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false
+if ($LASTEXITCODE -ne 0) { throw 'Collector publish failed.' }
+$collectorExe = Join-Path $publish 'NetScope.Collector.exe'
+if (-not (Test-Path -LiteralPath $collectorExe)) { throw 'Collector executable missing from publish output.' }
 
 $marker = Join-Path $publish 'UNSIGNED-DEVELOPMENT-BUILD.txt'
 [System.IO.File]::WriteAllText($marker, "NetScope $Version development build`r`nThis build is not Authenticode signed.`r`n")

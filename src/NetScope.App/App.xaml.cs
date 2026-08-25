@@ -3,6 +3,7 @@ using NetScope.App.Services;
 using NetScope.App.ViewModels;
 using NetScope.Core.Abstractions;
 using NetScope.Core.Services;
+using NetScope.Windows.Ipc;
 using NetScope.Windows.Logging;
 using NetScope.Windows.Network;
 using NetScope.Windows.Ports;
@@ -15,6 +16,7 @@ public partial class App : Application
     private SingleInstanceCoordinator? _singleInstance;
     private TrayService? _tray;
     private MainWindow? _window;
+    private ICollectorClient? _collectorClient;
     private bool _allowExit;
 
     protected override async void OnStartup(StartupEventArgs e)
@@ -33,7 +35,16 @@ public partial class App : Application
         var settings = await settingsStore.LoadAsync();
         ThemePalette.Apply(settings.Theme);
         var catalog = new PackagedPortCatalog();
-        var portTable = new WindowsPortTableProvider();
+        ICollectorClient? collectorClient = null;
+        if (!e.Args.Contains("--no-collector", StringComparer.OrdinalIgnoreCase))
+        {
+            collectorClient = new CollectorClient();
+            _collectorClient = collectorClient;
+            _ = CollectorLauncher.EnsureRunningAsync(collectorClient);
+        }
+        IPortTableProvider portTable = collectorClient is not null
+            ? new CollectorPortTableProvider(collectorClient, new WindowsPortTableProvider())
+            : new WindowsPortTableProvider();
         var processResolver = new WindowsProcessMetadataResolver();
         var availability = new WindowsPortAvailabilityProbe();
         var systemRanges = new WindowsPortSystemRangeProvider();
@@ -47,9 +58,10 @@ public partial class App : Application
         var performanceTester = new HttpNetworkPerformanceTester();
 
         var port = new PortViewModel(portTable, processResolver, catalog, availability, systemRanges, new PortSnapshotDiffer(), new PortSearchEngine(), settings);
+        var performance = new PerformanceViewModel(collectorClient ?? new NullCollectorClient(), settings);
         var diagnostic = new DiagnosticViewModel(engine, networkSnapshot, performanceTester, settings);
         var settingsVm = new SettingsViewModel(settingsStore, new StartupRegistration(), settings);
-        var main = new MainViewModel(port, diagnostic, settingsVm);
+        var main = new MainViewModel(port, performance, diagnostic, settingsVm);
 
         _window = new MainWindow(main);
         MainWindow = _window;
@@ -63,7 +75,7 @@ public partial class App : Application
                 MemoryTrimmer.Trim();
             }
         };
-        _window.Closed += (_, _) => port.Dispose();
+        _window.Closed += (_, _) => { port.Dispose(); performance.Dispose(); };
 
         if (!e.Args.Contains("--no-tray", StringComparer.OrdinalIgnoreCase))
         {
@@ -99,6 +111,7 @@ public partial class App : Application
         _allowExit = true;
         _tray?.Dispose();
         _singleInstance?.Dispose();
+        if (_collectorClient is not null) _ = _collectorClient.DisposeAsync();
         _window?.Close();
         Shutdown();
     }
@@ -107,6 +120,7 @@ public partial class App : Application
     {
         _tray?.Dispose();
         _singleInstance?.Dispose();
+        if (_collectorClient is not null) _ = _collectorClient.DisposeAsync();
         base.OnExit(e);
     }
 }

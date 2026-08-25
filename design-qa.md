@@ -63,3 +63,44 @@ final result: passed
 - [x] 16、32、48px 实际 ICO 帧分别渲染检查通过：`design/qa/netscope-icon-v2-16.png`、`netscope-icon-v2-32.png`、`netscope-icon-v2-48.png`。
 - [x] 旧版生成源保留为 `design/assets/netscope-icon-source-v1.png`，当前版本为 `netscope-icon-source-v2.png`。
 - [x] 默认端口首页将使用新图标重新渲染为 `design/qa/netscope-default-port-v015.png`。
+
+## V0.2 性能事件记录与归因 QA
+
+### 信息架构验收
+
+- [x] 新增“性能”入口，位于“端口”与“诊断”之间；默认首页仍是端口工作台。
+- [x] 性能工作区含总览、事件、进程三个二级页面。
+- [x] 总览展示 CPU/内存/网络曲线、Top 进程、“刚才卡了”按钮和最近事件。
+- [x] 事件详情展示事件前 30 秒 → 发生中 → 后 30 秒系统上下文、证据、最可能原因、可信度、建议与嫌疑进程。
+- [x] 进程中心支持搜索，展示时间曲线、相关事件与端口占用。
+- [x] “刚才卡了”点击后立即向事件流追加用户标记事件，事件页即时可见。
+- [x] 全部结论使用“可能/疑似”措辞并附可信度；无结束进程等破坏性操作。
+
+### 数据语义验收
+
+- [x] 事件规则 4 条（CPU 争用、内存压力、IO 压力、网络劣化）+ 用户标记，状态机 正常→疑似→捕捉中→冷却。
+- [x] 影响度评分排序嫌疑进程（CPU+内存+IO+前台+用户标记邻近度），只排序证据、不下因果结论。
+- [x] 历史存储使用进程身份 = PID + 启动时间（同一 PID 不同实例分别记录）。
+- [x] SQLite/WAL、批量写入、30 秒降采样、保留天数 1/7/14/30、损坏恢复（保留损坏副本并重建）。
+- [x] 设置项（历史开关/保留天数/后台采样）约 15 秒内热加载。
+
+### 冒烟测试发现并修复的生产级缺陷
+
+- 进程名乱码（`潔敄歳攮數`）：`Process32First` 未指定 `CharSet.Unicode` 绑定到 ANSI 导出，ASCII 字节按 UTF-16 解码；改用 `Process32FirstW/Process32NextW` + `ExactSpelling` 修复。
+- 可用内存恒为 0 且误报内存压力：`GlobalMemoryStatusEx` 以 `[In, Out]` 结构体传值返回 ok 但不回写；改用 `ref` 修复。
+- “刚才卡了”被拒但事件仍创建：服务端把 `MarkLagDto` 错序列化为 `PerformanceEventDto`，客户端无法解析；修复服务端响应类型。
+- 网卡名称为空：`SystemSampleDto` 丢失 `NetworkLinkUp/NetworkAdapterName`，`ProcessSampleDto` 丢失 `IsForeground`；补回 DTO 与映射。
+- 发布包缺 `NetScope.Collector.exe`：App 的 `StageCollector` 目标在发布时跳过；`scripts/package.ps1` 增加 Collector 独立发布到同一目录，并校验 exe 存在。
+
+### 记录到的设计偏差
+
+- 历史持久化仅保留按影响度排序的 Top 25 进程（5 秒粒度），不记录全部进程。
+- 突发采样是全局模式（触发期间所有进程 500ms），不是按进程独立触发。
+- 网络劣化规则只使用被动网卡状态（链路通断/适配器名），不做主动探测，因此通常只产生被动状态证据。
+- 历史记录默认开启（计划文档未指定默认值），UI 顶部展示保留天数提示与关闭入口。
+
+### 自动化结果
+
+- 单元与集成测试：90/90 通过（新增性能事件引擎 11、SQLite 历史存储 9、影响度评分 13 共 33 个 V0.2 测试）。
+- Release 全量发布成功；已发布 Collector 的 IPC 冒烟（系统/进程/端口采样、markLag、事件、历史查询、DB 落盘）通过。
+- 便携 ZIP 与 Inno Setup 安装包均包含 `NetScope.Collector.exe`。

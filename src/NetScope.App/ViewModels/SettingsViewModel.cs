@@ -23,6 +23,9 @@ public sealed partial class SettingsViewModel : ObservableObject
         CloseToTray = settings.CloseToTray;
         StartWithWindows = startup.IsEnabled;
         TargetsText = string.Join(Environment.NewLine, settings.DiagnosticTargets.Select(x => x.Host));
+        HistoryEnabled = settings.HistoryEnabled;
+        HistoryRetentionDays = settings.HistoryRetentionDays;
+        BackgroundRecording = settings.BackgroundRecording;
     }
 
     [ObservableProperty] private AppTheme _theme;
@@ -31,6 +34,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _closeToTray;
     [ObservableProperty] private bool _startWithWindows;
     [ObservableProperty] private string _targetsText;
+    [ObservableProperty] private bool _historyEnabled;
+    [ObservableProperty] private int _historyRetentionDays;
+    [ObservableProperty] private bool _backgroundRecording;
     [ObservableProperty] private string _saveStatus = "设置保存在本机，不包含遥测";
 
     [RelayCommand]
@@ -46,6 +52,9 @@ public sealed partial class SettingsViewModel : ObservableObject
             CloseToTray = CloseToTray,
             StartWithWindows = StartWithWindows,
             DiagnosticTargets = targets,
+            HistoryEnabled = HistoryEnabled,
+            HistoryRetentionDays = HistoryRetentionDays,
+            BackgroundRecording = BackgroundRecording,
             TelemetryEnabled = false
         }.Normalize();
         await _store.SaveAsync(settings);

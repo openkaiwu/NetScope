@@ -10,7 +10,11 @@ public sealed class SparklineVisual : DrawingVisualHost
     private INotifyCollectionChanged? _observed;
     public static readonly DependencyProperty ValuesProperty = DependencyProperty.Register(nameof(Values), typeof(IEnumerable), typeof(SparklineVisual),
         new FrameworkPropertyMetadata(null, OnValuesChanged));
+    public static readonly DependencyProperty EmptyTextProperty = DependencyProperty.Register(nameof(EmptyText), typeof(string), typeof(SparklineVisual),
+        new PropertyMetadata("暂无数据"));
+
     public IEnumerable? Values { get => (IEnumerable?)GetValue(ValuesProperty); set => SetValue(ValuesProperty, value); }
+    public string EmptyText { get => (string)GetValue(EmptyTextProperty); set => SetValue(EmptyTextProperty, value); }
 
     private static void OnValuesChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
@@ -29,7 +33,7 @@ public sealed class SparklineVisual : DrawingVisualHost
         var values = Values?.Cast<object>().Select(Convert.ToDouble).ToArray() ?? [];
         if (values.Length < 2)
         {
-            var wait = new FormattedText("运行快速诊断后显示网关延迟趋势", System.Globalization.CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
+            var wait = new FormattedText(EmptyText, System.Globalization.CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
                 new Typeface("Segoe UI Variable Text"), 11, new SolidColorBrush(Color.FromRgb(152, 162, 179)), 1.0);
             context.DrawText(wait, new Point((size.Width - wait.Width) / 2, (size.Height - wait.Height) / 2));
             return;

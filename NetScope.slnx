@@ -3,6 +3,7 @@
     <Project Path="src/NetScope.App/NetScope.App.csproj" />
     <Project Path="src/NetScope.Core/NetScope.Core.csproj" />
     <Project Path="src/NetScope.Windows/NetScope.Windows.csproj" />
+    <Project Path="src/NetScope.Collector/NetScope.Collector.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/NetScope.Tests/NetScope.Tests.csproj" />

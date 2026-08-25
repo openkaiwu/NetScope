@@ -1,0 +1,410 @@
+<UserControl x:Class="NetScope.App.Views.PerformanceView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:NetScope.App.Controls">
+    <Grid Margin="24,18,24,22">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <Grid Margin="0,0,0,14">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock Text="性能记录" FontSize="26" FontWeight="SemiBold"/>
+                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                    <Ellipse Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,7,0">
+                        <Ellipse.Style>
+                            <Style TargetType="Ellipse">
+                                <Setter Property="Fill" Value="{DynamicResource TextMutedBrush}"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding CollectorConnected}" Value="True">
+                                        <Setter Property="Fill" Value="{DynamicResource SuccessBrush}"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Ellipse.Style>
+                    </Ellipse>
+                    <TextBlock Text="{Binding CollectorStatus}" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                    <TextBlock Text="  ·  "/>
+                    <TextBlock Text="{Binding LastUpdateText}" Foreground="{DynamicResource TextMutedBrush}"/>
+                </StackPanel>
+            </StackPanel>
+            <Border Grid.Column="1" VerticalAlignment="Center" Padding="10,5" CornerRadius="12"
+                    Background="{DynamicResource SurfaceAltBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock FontFamily="{StaticResource FluentIcons}" Text="&#xE72E;" Foreground="{DynamicResource SuccessBrush}" Margin="0,0,6,0"/>
+                    <TextBlock Text="数据仅存本机 · 只读分析" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="1" HorizontalAlignment="Left" Background="{DynamicResource SurfaceAltBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="4" Margin="0,0,0,12">
+            <StackPanel Orientation="Horizontal">
+                <Button Command="{Binding ShowOverviewCommand}" Padding="18,8">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+                            <Setter Property="Background" Value="Transparent"/>
+                            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsOverviewSelected}" Value="True">
+                                    <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock FontFamily="{StaticResource FluentIcons}" Text="&#xE9D9;" Margin="0,0,8,0"/>
+                        <TextBlock Text="概览" FontWeight="SemiBold"/>
+                    </StackPanel>
+                </Button>
+                <Button Command="{Binding ShowEventsCommand}" Padding="18,8">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+                            <Setter Property="Background" Value="Transparent"/>
+                            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsEventsSelected}" Value="True">
+                                    <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock FontFamily="{StaticResource FluentIcons}" Text="&#xE7BA;" Margin="0,0,8,0"/>
+                        <TextBlock Text="事件时间线" FontWeight="SemiBold"/>
+                    </StackPanel>
+                </Button>
+                <Button Command="{Binding ShowProcessesCommand}" Padding="18,8">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+                            <Setter Property="Background" Value="Transparent"/>
+                            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsProcessesSelected}" Value="True">
+                                    <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock FontFamily="{StaticResource FluentIcons}" Text="&#xE7C1;" Margin="0,0,8,0"/>
+                        <TextBlock Text="进程中心" FontWeight="SemiBold"/>
+                    </StackPanel>
+                </Button>
+                <Button Command="{Binding RefreshCommand}" Style="{StaticResource SecondaryButtonStyle}" Padding="12,8" Margin="8,0,4,0" ToolTip="立即刷新">
+                    <TextBlock FontFamily="{StaticResource FluentIcons}" Text="&#xE72C;"/>
+                </Button>
+            </StackPanel>
+        </Border>
+
+        <Grid Grid.Row="2">
+            <!-- 概览 -->
+            <Grid Visibility="{Binding IsOverviewSelected, Converter={StaticResource BoolToVisibility}}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Border Style="{StaticResource CardStyle}" Margin="0,0,10,0">
+                        <StackPanel>
+                            <TextBlock Text="CPU 占用" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12"/>
+                            <TextBlock Text="{Binding CpuText}" FontSize="24" FontWeight="SemiBold" Margin="0,2,0,8"/>
+                            <controls:SparklineVisual Values="{Binding CpuHistory}" EmptyText="连接后台记录后显示最近 15 分钟" Height="56"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="1" Style="{StaticResource CardStyle}" Margin="0,0,10,0">
+                        <StackPanel>
+                            <TextBlock Text="内存占用" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12"/>
+                            <TextBlock Text="{Binding MemoryText}" FontSize="16" FontWeight="SemiBold" Margin="0,8,0,10"/>
+                            <controls:SparklineVisual Values="{Binding MemoryHistory}" EmptyText="连接后台记录后显示最近 15 分钟" Height="40"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="2" Style="{StaticResource CardStyle}" Margin="0,0,10,0">
+                        <StackPanel>
+                            <TextBlock Text="网络收发" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12"/>
+                            <TextBlock Text="{Binding NetworkText}" FontSize="16" FontWeight="SemiBold" Margin="0,8,0,10"/>
+                            <controls:SparklineVisual Values="{Binding NetworkHistory}" EmptyText="连接后台记录后显示最近 15 分钟" Height="40"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="3" Style="{StaticResource CardStyle}" Background="{DynamicResource SurfaceAltBrush}" MinWidth="230">
+                        <StackPanel VerticalAlignment="Center">
+                            <Button Command="{Binding MarkLagCommand}" Style="{StaticResource PrimaryButtonStyle}" HorizontalAlignment="Stretch">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock FontFamily="{StaticResource FluentIcons}" Text="&#xE7BA;" Margin="0,0,8,0"/>
+                                    <TextBlock Text="刚才卡了"/>
+                                </StackPanel>
+                            </Button>
+                            <TextBlock Text="感到卡顿/风扇狂转时点一下，会记录当前现场并尝试归因（约 30–60 秒高频采样）。"
+                                       TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,8,0,0"/>
+                            <TextBlock Text="{Binding MarkStatus}" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource AccentBrush}" Margin="0,6,0,0"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <Grid Grid.Row="1" Margin="0,12,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Border Style="{StaticResource CardStyle}" Margin="0,0,10,0" Padding="12">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="当前高影响进程（按证据分排序，非定责）" FontWeight="SemiBold" Margin="2,0,0,8"/>
+                            <ListBox Grid.Row="1" ItemsSource="{Binding TopProcesses}" SelectedItem="{Binding SelectedProcess}"
+                                     Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     ItemContainerStyle="{StaticResource FlatListItemStyle}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Padding="8,6" CornerRadius="6" Margin="0,0,0,4" Background="{DynamicResource SurfaceAltBrush}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="90"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                                    <TextBlock Text="CPU " Foreground="{DynamicResource TextMutedBrush}" FontSize="11"/>
+                                                    <TextBlock Text="{Binding CpuText}" FontSize="11" Margin="0,0,10,0"/>
+                                                    <TextBlock Text="内存 " Foreground="{DynamicResource TextMutedBrush}" FontSize="11"/>
+                                                    <TextBlock Text="{Binding MemoryText}" FontSize="11" Margin="0,0,10,0"/>
+                                                    <TextBlock Text="I/O " Foreground="{DynamicResource TextMutedBrush}" FontSize="11"/>
+                                                    <TextBlock Text="{Binding IoText}" FontSize="11"/>
+                                                </StackPanel>
+                                                <Border Grid.Column="2" Background="{DynamicResource AccentBrush}" CornerRadius="8" Padding="8,2" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding ImpactText}" Foreground="White" FontSize="11" FontWeight="SemiBold"/>
+                                                </Border>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Grid>
+                    </Border>
+                    <Border Grid.Column="1" Style="{StaticResource CardStyle}" Padding="12">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="最近事件（点开查看证据）" FontWeight="SemiBold" Margin="2,0,0,8"/>
+                            <ListBox Grid.Row="1" ItemsSource="{Binding RecentEvents}" SelectedItem="{Binding SelectedEvent}"
+                                     Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     ItemContainerStyle="{StaticResource FlatListItemStyle}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Padding="8,6" CornerRadius="6" Margin="0,0,0,4" Background="{DynamicResource SurfaceAltBrush}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock FontFamily="{StaticResource FluentIcons}" Text="{Binding TypeGlyph}" Foreground="{DynamicResource AccentBrush}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                                <TextBlock Text="{Binding TypeText}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                                <TextBlock Text="{Binding TimeText}" Foreground="{DynamicResource TextMutedBrush}" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                                                <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <TextBlock Grid.Row="2" Text="{Binding HistoryNotice}" Foreground="{DynamicResource TextMutedBrush}" FontSize="11" Margin="2,10,0,0"/>
+            </Grid>
+
+            <!-- 事件时间线 -->
+            <Grid Visibility="{Binding IsEventsSelected, Converter={StaticResource BoolToVisibility}}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="330"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Border Style="{StaticResource CardStyle}" Padding="10">
+                    <ListBox ItemsSource="{Binding RecentEvents}" SelectedItem="{Binding SelectedEvent}"
+                             Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ItemContainerStyle="{StaticResource FlatListItemStyle}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border Padding="10,8" CornerRadius="8" Margin="0,0,0,6" Background="{DynamicResource SurfaceAltBrush}">
+                                    <StackPanel>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock FontFamily="{StaticResource FluentIcons}" Text="{Binding TypeGlyph}" Foreground="{DynamicResource AccentBrush}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding TypeText}" FontWeight="SemiBold"/>
+                                            <TextBlock Text="{Binding TimeText}" Foreground="{DynamicResource TextMutedBrush}" Margin="10,0,0,0"/>
+                                            <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Padding="6,1" Margin="8,0,0,0" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding StatusText}" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                            </Border>
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0"/>
+                                        <TextBlock Text="{Binding ConfidenceText}" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" Margin="0,4,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Border>
+                <Border Grid.Column="1" Style="{StaticResource CardStyle}" Margin="12,0,0,0">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="4">
+                            <TextBlock Text="事件详情" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                            <TextBlock Text="选择左侧事件查看：时间范围、可信度、最可能原因、证据清单与处置建议。所有结论均为“可能/疑似”推断，不构成确定性定责。"
+                                       TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,0,0,14">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding SelectedEvent}" Value="{x:Null}">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <ContentControl Content="{Binding SelectedEvent}">
+                                <ContentControl.ContentTemplate>
+                                    <DataTemplate>
+                                        <StackPanel>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                                <TextBlock FontFamily="{StaticResource FluentIcons}" Text="{Binding TypeGlyph}" Foreground="{DynamicResource AccentBrush}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                                <TextBlock Text="{Binding TypeText}" FontSize="16" FontWeight="SemiBold"/>
+                                                <TextBlock Text="{Binding DurationText}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="12,2,0,0"/>
+                                                <Border Background="{DynamicResource AccentBrush}" CornerRadius="8" Padding="8,2" Margin="12,0,0,0" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding ConfidenceText}" Foreground="White" FontSize="11"/>
+                                                </Border>
+                                            </StackPanel>
+                                            <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" FontSize="13" Margin="0,0,0,10"/>
+                                            <Border Background="{DynamicResource SurfaceAltBrush}" CornerRadius="8" Padding="12" Margin="0,0,0,10">
+                                                <StackPanel>
+                                                    <TextBlock Text="最可能的原因（推断）" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,4"/>
+                                                    <TextBlock Text="{Binding Cause}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                                </StackPanel>
+                                            </Border>
+                                            <TextBlock Text="证据清单" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                            <ItemsControl ItemsSource="{Binding Evidence}" Margin="0,0,0,10">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel Orientation="Horizontal" Margin="0,2">
+                                                            <TextBlock Text="·" Foreground="{DynamicResource AccentBrush}" Margin="0,0,8,0"/>
+                                                            <TextBlock Text="{Binding}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                            <TextBlock Text="处置建议" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                                            <ItemsControl ItemsSource="{Binding Recommendations}" Margin="0,0,0,10">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel Orientation="Horizontal" Margin="0,2">
+                                                            <TextBlock Text="·" Foreground="{DynamicResource SuccessBrush}" Margin="0,0,8,0"/>
+                                                            <TextBlock Text="{Binding}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                            <TextBlock Text="关联进程（按影响分排序，仅代表证据强度）" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                            <TextBlock Text="{Binding ContributorsText}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,10"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ContentControl.ContentTemplate>
+                            </ContentControl>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+            </Grid>
+
+            <!-- 进程中心 -->
+            <Grid Visibility="{Binding IsProcessesSelected, Converter={StaticResource BoolToVisibility}}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Border Style="{StaticResource CardStyle}" Margin="0,0,10,0" Padding="12">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Grid Margin="2,0,2,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox Text="{Binding ProcessSearchText, UpdateSourceTrigger=PropertyChanged}" Padding="10,8"/>
+                                <Button Grid.Column="1" Command="{Binding SearchProcessesCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0" Content="搜索"/>
+                            </Grid>
+                            <ListBox Grid.Row="1" ItemsSource="{Binding TopProcesses}" SelectedItem="{Binding SelectedProcess}"
+                                     Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     ItemContainerStyle="{StaticResource FlatListItemStyle}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Padding="10,7" CornerRadius="6" Margin="0,0,0,4" Background="{DynamicResource SurfaceAltBrush}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="140"/><ColumnDefinition Width="70"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxWidth="110"/>
+                                                    <TextBlock Text="{Binding ForegroundText}" Foreground="{DynamicResource AccentBrush}" FontSize="10" Margin="6,2,0,0" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                                <TextBlock Grid.Column="1" Text="{Binding CpuText}" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                                <TextBlock Grid.Column="2" Text="{Binding PortsText}" Foreground="{DynamicResource TextMutedBrush}" FontSize="11" VerticalAlignment="Center"/>
+                                                <Border Grid.Column="3" Background="{DynamicResource AccentBrush}" CornerRadius="8" Padding="8,2" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding ImpactText}" Foreground="White" FontSize="11" FontWeight="SemiBold"/>
+                                                </Border>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Grid>
+                    </Border>
+                    <Border Grid.Column="1" Style="{StaticResource CardStyle}" Padding="12">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="进程详情" FontWeight="SemiBold" Margin="2,0,0,8"/>
+                            <TextBlock Grid.Row="1" Text="{Binding ProcessDetailStatus}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="2,0,0,8"/>
+                            <StackPanel Grid.Row="2">
+                                <TextBlock Text="最近 15 分钟 CPU 趋势" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="2,0,0,4"/>
+                                <controls:SparklineVisual Values="{Binding ProcessCpuHistory}" EmptyText="选择进程后显示历史曲线" Height="72"/>
+                                <TextBlock Text="相关事件" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="2,14,0,4"/>
+                                <ItemsControl ItemsSource="{Binding ProcessEvents}" MaxHeight="160">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal" Margin="0,3">
+                                                <TextBlock FontFamily="{StaticResource FluentIcons}" Text="{Binding TypeGlyph}" Foreground="{DynamicResource AccentBrush}" Margin="0,0,8,0"/>
+                                                <TextBlock Text="{Binding TypeText}" FontSize="12"/>
+                                                <TextBlock Text="{Binding TimeText}" FontSize="12" Foreground="{DynamicResource TextMutedBrush}" Margin="10,0,0,0"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
+                <TextBlock Grid.Row="1" Text="{Binding HistoryNotice}" Foreground="{DynamicResource TextMutedBrush}" FontSize="11" Margin="2,10,0,0"/>
+            </Grid>
+        </Grid>
+    </Grid>
+</UserControl>
