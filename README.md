@@ -1,3 +1,5 @@
+<p align="center"><b>简体中文</b> · <a href="README.en.md">English</a></p>
+
 # NetScope
 
 NetScope 是一款面向 Windows 10/11 的轻量端口管理与可视化网络诊断工具。界面使用中文，保留 PID、TCP、UDP、DNS、DHCP、TLS 等标准技术术语；核心操作保持只读。
