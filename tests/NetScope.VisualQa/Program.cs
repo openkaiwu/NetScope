@@ -10,7 +10,9 @@ using NetScope.App.Views;
 using NetScope.Core.Abstractions;
 using NetScope.Core.Models;
 using NetScope.Core.Services;
+using NetScope.Windows.Ipc;
 using NetScope.Windows.Ports;
+using NetScope.Windows.Settings;
 
 namespace NetScope.VisualQa;
 
@@ -35,6 +37,7 @@ internal static class Program
         Render(viewModel, 972, 700, Path.Combine(output, "diagnostic-speed-workspace-v013.png"));
         Render(viewModel, 712, 560, Path.Combine(output, "diagnostic-speed-compact-v013.png"));
         RenderDefaultPortShell(viewModel, output);
+        RenderPerformancePage(output);
     }
 
     private static void RenderDefaultPortShell(DiagnosticViewModel diagnosticViewModel, string output)
@@ -64,7 +67,9 @@ internal static class Program
         port.StatusText = $"实时监测中 · {now:HH:mm:ss} 更新";
         port.SelectedRow = port.Rows.FirstOrDefault();
 
-        var main = new MainViewModel(port, diagnosticViewModel, null!);
+        var performance = new PerformanceViewModel(new NullCollectorClient(), settings);
+        var settingsVm = new SettingsViewModel(new JsonSettingsStore(Path.Combine(Path.GetTempPath(), "netscope-visualqa-settings.json")), new StartupRegistration(), settings);
+        var main = new MainViewModel(port, performance, diagnosticViewModel, settingsVm);
         if (main.SelectedNavigation != "端口" || !ReferenceEquals(main.CurrentPage, port))
             throw new InvalidOperationException("NetScope default page must be the port workspace");
 
@@ -89,6 +94,101 @@ internal static class Program
 
         window.Close();
         port.Dispose();
+        performance.Dispose();
+    }
+
+    private static void RenderPerformancePage(string output)
+    {
+        var performance = new PerformanceViewModel(new NullCollectorClient(), new AppSettings());
+        PopulatePerformance(performance);
+        Render(performance, 1140, 720, Path.Combine(output, "netscope-performance-v020.png"));
+        performance.Dispose();
+    }
+
+    private static void PopulatePerformance(PerformanceViewModel vm)
+    {
+        var now = DateTimeOffset.Now;
+        vm.CollectorConnected = true;
+        vm.CollectorStatus = "后台记录运行中";
+        vm.LastUpdateText = $"更新于 {now:HH:mm:ss}";
+        vm.CpuPercent = 37;
+        vm.CpuText = "37%";
+        vm.MemoryText = "12.6 GB / 31.9 GB";
+        vm.NetworkText = "↓ 1.2 MB/s  ↑ 860 KB/s";
+        vm.MarkStatus = $"已记录 {now.AddSeconds(-25):HH:mm:ss} 前的现场，正在合成分析";
+
+        var random = new Random(42);
+        for (var i = 0; i < 60; i++)
+        {
+            var spike = i is >= 42 and <= 48;
+            vm.CpuHistory.Add(Math.Round(Math.Min(99, 24 + random.NextDouble() * 22 + (spike ? 34 + random.NextDouble() * 12 : 0)), 1));
+            vm.MemoryHistory.Add(Math.Round(34 + random.NextDouble() * 6, 1));
+            vm.NetworkHistory.Add(Math.Round(120 + random.NextDouble() * 700 + (spike ? 600 : 0), 1));
+        }
+
+        var key = (int pid) => new ProcessInstanceKey(pid, now.AddMinutes(-10));
+        var procs = new[]
+        {
+            SampleProc(key(28440), "msedge.exe", 42.0, 2_200_000_000, 3_800_000, 1_200_000, true),
+            SampleProc(key(11484), "NetScope.Collector.exe", 18.0, 160_000_000, 120_000, 40_000, false),
+            SampleProc(key(3916), "devenv.exe", 11.0, 1_400_000_000, 90_000, 210_000, false),
+            SampleProc(key(9460), "mysqld.exe", 4.0, 980_000_000, 2_400_000, 5_100_000, false),
+            SampleProc(key(1260), "svchost.exe", 2.0, 210_000_000, 12_000, 8_000, false)
+        };
+        foreach (var sample in procs)
+            vm.TopProcesses.Add(new ProcessImpactRowViewModel(sample, ImpactScoreCalculator.Compute(sample), 3));
+
+        var contributors = new[]
+        {
+            new PerformanceEventContributor(key(28440), "msedge.exe", 42),
+            new PerformanceEventContributor(key(11484), "NetScope.Collector.exe", 18),
+            new PerformanceEventContributor(key(3916), "devenv.exe", 11)
+        };
+        vm.RecentEvents.Add(new EventCardViewModel(new PerformanceEvent(
+            Guid.NewGuid(), PerformanceEventType.CpuContention, PerformanceEventStatus.Confirmed,
+            now.AddMinutes(-6), now.AddMinutes(-6).AddSeconds(12), 80,
+            "系统 CPU 连续 12 秒超过 85%，疑似资源争用",
+            "msedge.exe（PID 28440）在事件期间 CPU 与内存均显著抬升",
+            new[] { "系统 CPU 峰值 94%，持续 12 秒", "msedge.exe 平均 CPU 42%，明显高于基线", "事件发生在最近一次用户标记前 30 秒" },
+            new[] { "检查浏览器后台标签与扩展数量", "如反复出现，可重启该进程后再观察" },
+            key(28440), "msedge.exe", contributors)));
+        vm.RecentEvents.Add(new EventCardViewModel(new PerformanceEvent(
+            Guid.NewGuid(), PerformanceEventType.UserMarkedLag, PerformanceEventStatus.Confirmed,
+            now.AddSeconds(-25), now.AddSeconds(-20), 100,
+            "您标记了一次卡顿，已记录现场并进入高频采样",
+            "等待归因结果",
+            new[] { "您于此刻点击「刚才卡了」", "已自动进入 500ms 高频采样" },
+            new[] { "30–60 秒后查看归因结果与关联进程" },
+            null, null, Array.Empty<PerformanceEventContributor>())));
+    }
+
+    private static ProcessPerformanceSample SampleProc(ProcessInstanceKey key, string name, double cpu, long ws, long readBps, long writeBps, bool foreground)
+        => new(key, DateTimeOffset.Now, name, cpu, ws, ws, readBps, writeBps, 0, 0, true, null, foreground);
+
+    private static void Render(PerformanceViewModel viewModel, double width, double height, string path)
+    {
+        var view = new PerformanceView
+        {
+            DataContext = viewModel,
+            Width = width,
+            Height = height,
+            Background = (Brush)Application.Current.Resources["CanvasBrush"]
+        };
+        Render(view, width, height, path);
+    }
+
+    private static void Render(FrameworkElement view, double width, double height, string path)
+    {
+        view.Measure(new Size(width, height));
+        view.Arrange(new Rect(0, 0, width, height));
+        view.UpdateLayout();
+
+        var bitmap = new RenderTargetBitmap((int)Math.Ceiling(width), (int)Math.Ceiling(height), 96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(view);
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        using var stream = File.Create(path);
+        encoder.Save(stream);
     }
 
     private static void Populate(DiagnosticViewModel viewModel)

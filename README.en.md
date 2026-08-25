@@ -4,7 +4,7 @@
 
 NetScope is a lightweight Windows 10/11 port management and network diagnostic tool with a Chinese interface. It keeps standard technical terms such as PID, TCP, UDP, DNS, DHCP and TLS; all core operations stay read-only.
 
-![NetScope visual baseline](design/reference/netscope-fluent-pro-option-3.png)
+![NetScope V0.2 performance workspace](design/qa/netscope-performance-v020.png)
 
 ## V0.1.5 capabilities
 

@@ -66,6 +66,10 @@ final result: passed
 
 ## V0.2 性能事件记录与归因 QA
 
+### 视觉证据
+
+- 性能工作区总览页（由 Release WPF 控件直接渲染）：`design/qa/netscope-performance-v020.png`
+
 ### 信息架构验收
 
 - [x] 新增“性能”入口，位于“端口”与“诊断”之间；默认首页仍是端口工作台。
