@@ -68,7 +68,7 @@ final result: passed
 
 ### 视觉证据
 
-- 性能工作区总览页（由 Release WPF 控件直接渲染）：`design/qa/netscope-performance-v020.png`
+- 性能工作区三个子页（由 Release WPF 控件直接渲染）：总览 `design/qa/netscope-performance-v020.png`、事件时间线 `design/qa/netscope-performance-events-v020.png`、进程中心 `design/qa/netscope-performance-processes-v020.png`
 
 ### 信息架构验收
 

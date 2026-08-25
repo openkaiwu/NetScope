@@ -99,9 +99,21 @@ internal static class Program
 
     private static void RenderPerformancePage(string output)
     {
-        var performance = new PerformanceViewModel(new NullCollectorClient(), new AppSettings());
+        var performance = new PerformanceViewModel(new SampleCollectorClient(), new AppSettings());
         PopulatePerformance(performance);
+
         Render(performance, 1140, 720, Path.Combine(output, "netscope-performance-v020.png"));
+
+        performance.IsOverviewSelected = false;
+        performance.IsEventsSelected = true;
+        performance.SelectedEvent = performance.RecentEvents.FirstOrDefault();
+        Render(performance, 1140, 720, Path.Combine(output, "netscope-performance-events-v020.png"));
+
+        performance.IsEventsSelected = false;
+        performance.IsProcessesSelected = true;
+        performance.SelectedProcess = performance.TopProcesses.FirstOrDefault();
+        Render(performance, 1140, 720, Path.Combine(output, "netscope-performance-processes-v020.png"));
+
         performance.Dispose();
     }
 
@@ -164,6 +176,89 @@ internal static class Program
 
     private static ProcessPerformanceSample SampleProc(ProcessInstanceKey key, string name, double cpu, long ws, long readBps, long writeBps, bool foreground)
         => new(key, DateTimeOffset.Now, name, cpu, ws, ws, readBps, writeBps, 0, 0, true, null, foreground);
+
+    /// <summary>返回确定性的示例采样数据，让性能页各子页在截图中显示真实内容。</summary>
+    private sealed class SampleCollectorClient : ICollectorClient
+    {
+        private readonly DateTimeOffset _now = DateTimeOffset.Now;
+        private readonly Random _random = new(7);
+
+        public ValueTask<bool> IsAvailableAsync(CancellationToken cancellationToken = default) => ValueTask.FromResult(true);
+
+        public ValueTask<ImmutableArray<PortBindingSnapshot>> GetPortSnapshotAsync(CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(SamplePortTableProvider.CreateRows());
+
+        public ValueTask<SystemPerformanceSample?> GetSystemSampleAsync(CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<SystemPerformanceSample?>(new SystemPerformanceSample(_now, 37, 20_000_000_000, 34_296_963_072, 1_200_000, 860_000, true, "以太网"));
+
+        public ValueTask<ImmutableArray<ProcessPerformanceSample>> GetProcessSamplesAsync(CancellationToken cancellationToken = default)
+        {
+            var key = (int pid) => new ProcessInstanceKey(pid, _now.AddMinutes(-10));
+            return ValueTask.FromResult(ImmutableArray.Create(
+                SampleProc(key(28440), "msedge.exe", 42.0, 2_200_000_000, 3_800_000, 1_200_000, true),
+                SampleProc(key(11484), "NetScope.Collector.exe", 18.0, 160_000_000, 120_000, 40_000, false),
+                SampleProc(key(3916), "devenv.exe", 11.0, 1_400_000_000, 90_000, 210_000, false),
+                SampleProc(key(9460), "mysqld.exe", 4.0, 980_000_000, 2_400_000, 5_100_000, false),
+                SampleProc(key(1260), "svchost.exe", 2.0, 210_000_000, 12_000, 8_000, false)));
+        }
+
+        public ValueTask<bool> MarkLagAsync(CancellationToken cancellationToken = default) => ValueTask.FromResult(true);
+
+        public ValueTask<IReadOnlyList<PerformanceEvent>> GetRecentEventsAsync(int limit = 100, CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<IReadOnlyList<PerformanceEvent>>(BuildEvents());
+
+        public ValueTask<IReadOnlyList<SystemPerformanceSample>> QuerySystemHistoryAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default)
+        {
+            var list = new List<SystemPerformanceSample>();
+            for (var t = from; t <= to; t = t.AddSeconds(1))
+            {
+                var cpu = 24 + _random.NextDouble() * 22;
+                if (t > to.AddSeconds(-22) && t < to.AddSeconds(-10)) cpu += 34 + _random.NextDouble() * 10;
+                list.Add(new SystemPerformanceSample(t, Math.Round(Math.Min(99, cpu), 1), 20_000_000_000, 34_296_963_072, 1_200_000, 860_000, true, "以太网"));
+            }
+            return ValueTask.FromResult<IReadOnlyList<SystemPerformanceSample>>(list);
+        }
+
+        public ValueTask<IReadOnlyList<ProcessPerformanceSample>> QueryProcessHistoryAsync(ProcessInstanceKey process, DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default)
+        {
+            var list = new List<ProcessPerformanceSample>();
+            var spike = process.ProcessId == 28440;
+            var name = spike ? "msedge.exe" : "NetScope.Collector.exe";
+            for (var t = from; t <= to; t = t.AddSeconds(15))
+            {
+                var cpu = spike ? 8 + _random.NextDouble() * 30 : 3 + _random.NextDouble() * 10;
+                if (spike && t > to.AddMinutes(-8) && t < to.AddMinutes(-6)) cpu += 40;
+                list.Add(new ProcessPerformanceSample(process, t, name, Math.Round(Math.Min(99, cpu), 1),
+                    2_200_000_000, 2_000_000_000, 3_800_000, 1_200_000, 0, 0, true, null, spike));
+            }
+            return ValueTask.FromResult<IReadOnlyList<ProcessPerformanceSample>>(list);
+        }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+        private IReadOnlyList<PerformanceEvent> BuildEvents()
+        {
+            var key = (int pid) => new ProcessInstanceKey(pid, _now.AddMinutes(-10));
+            return new List<PerformanceEvent>
+            {
+                new(Guid.NewGuid(), PerformanceEventType.CpuContention, PerformanceEventStatus.Confirmed,
+                    _now.AddMinutes(-6), _now.AddMinutes(-6).AddSeconds(12), 80,
+                    "系统 CPU 连续 12 秒超过 85%，疑似资源争用",
+                    "msedge.exe（PID 28440）在事件期间 CPU 与内存均显著抬升",
+                    new[] { "系统 CPU 峰值 94%，持续 12 秒", "msedge.exe 平均 CPU 42%，明显高于基线", "事件发生在最近一次用户标记前 30 秒" },
+                    new[] { "检查浏览器后台标签与扩展数量", "如反复出现，可重启该进程后再观察" },
+                    key(28440), "msedge.exe",
+                    new[] { new PerformanceEventContributor(key(28440), "msedge.exe", 42), new PerformanceEventContributor(key(11484), "NetScope.Collector.exe", 18), new PerformanceEventContributor(key(3916), "devenv.exe", 11) }),
+                new(Guid.NewGuid(), PerformanceEventType.UserMarkedLag, PerformanceEventStatus.Confirmed,
+                    _now.AddSeconds(-25), _now.AddSeconds(-20), 100,
+                    "您标记了一次卡顿，已记录现场并进入高频采样",
+                    "等待归因结果",
+                    new[] { "您于此刻点击「刚才卡了」", "已自动进入 500ms 高频采样" },
+                    new[] { "30–60 秒后查看归因结果与关联进程" },
+                    null, null, Array.Empty<PerformanceEventContributor>())
+            };
+        }
+    }
 
     private static void Render(PerformanceViewModel viewModel, double width, double height, string path)
     {

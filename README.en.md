@@ -44,6 +44,17 @@ V0.2 records and attributes performance events; it still does not include tracer
 
 See [Installation & usage guide](docs/安装与使用说明.md) for installation, icon and default-page details.
 
+## Screenshots
+
+<p align="center">
+  <img src="design/qa/netscope-performance-v020.png" width="49%" alt="Performance overview"/>
+  <img src="design/qa/netscope-performance-events-v020.png" width="49%" alt="Event timeline"/>
+</p>
+<p align="center">
+  <img src="design/qa/netscope-performance-processes-v020.png" width="49%" alt="Process center"/>
+  <img src="design/qa/netscope-default-port-v015.png" width="49%" alt="Port workspace"/>
+</p>
+
 ## Project structure
 
 ```text

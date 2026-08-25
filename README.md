@@ -44,6 +44,17 @@ V0.2 记录并归因性能事件，仍不包含路由追踪、MTU 与逐进程�
 
 安装、图标和默认页面说明见 [安装与使用说明](docs/安装与使用说明.md)。
 
+## 界面截图
+
+<p align="center">
+  <img src="design/qa/netscope-performance-v020.png" width="49%" alt="性能总览"/>
+  <img src="design/qa/netscope-performance-events-v020.png" width="49%" alt="事件时间线"/>
+</p>
+<p align="center">
+  <img src="design/qa/netscope-performance-processes-v020.png" width="49%" alt="进程中心"/>
+  <img src="design/qa/netscope-default-port-v015.png" width="49%" alt="端口工作台"/>
+</p>
+
 ## 工程结构
 
 ```text
