@@ -4,9 +4,11 @@
 
 NetScope is a lightweight Windows 10/11 port management and network diagnostic tool with a Chinese interface. It keeps standard technical terms such as PID, TCP, UDP, DNS, DHCP and TLS; all core operations stay read-only.
 
-![NetScope V0.2 performance workspace](design/qa/netscope-performance-v020.png)
+![NetScope main window (default port workspace)](design/qa/netscope-default-port-v015.png)
 
-## V0.1.5 capabilities
+## Feature overview
+
+### Port workspace (default home page)
 
 - Live TCP4, TCP6, UDP4 and UDP6 bindings, resolved to PID and process.
 - Search by port, PID, process name, path or Chinese usage description, with `port:`, `pid:` and `proc:` prefixes.
@@ -14,29 +16,37 @@ NetScope is a lightweight Windows 10/11 port management and network diagnostic t
 - A dedicated "Port encyclopedia" for querying unoccupied ports, showing protocol, usage, common software, exposure risk and the current process.
 - Port spectrum distinguishes standard ports, theoretical candidates, Windows dynamic ranges, system-excluded ports, high-risk ports, currently occupied ports and binding-verified results.
 - Filters candidate ports from 1024–49151 and runs TCP/UDP, IPv4/IPv6 exclusive binding verification; results are always marked "currently recommended".
-- Quick diagnostics for local machine, adapter/Wi-Fi, IP/DHCP, gateway, DNS, internet and all configured targets, with per-node status, evidence, confidence and recommendations.
+
+### Network diagnostics & speed test
+
 - "Network diagnostics" and "Speed test" are two separate secondary workspaces: the former focuses on connectivity and fault evidence, the latter on real throughput, latency under load and Bufferbloat.
-- The software opens the port workspace by default; a unified NetScope icon is wired into the EXE, installer, desktop/Start menu shortcuts, window title bar, taskbar and system tray.
-- The active adapter is chosen by the Windows best route; APIPA is only evaluated for the adapter actually carrying traffic.
+- Quick diagnostics for local machine, adapter/Wi-Fi, IP/DHCP, gateway, DNS, internet and all configured targets, with per-node status, evidence, confidence and recommendations.
 - Gateway diagnostics collect 10 real ICMP samples in parallel and report average, P95, jitter and packet loss; results below 1 ms are not mis-shown as 0 ms.
 - The diagnostics page keeps gateway timing, per-stage DNS/TCP/TLS latency and phase execution time separate, avoiding a misleading line chart built from heterogeneous samples.
+- The active adapter is chosen by the Windows best route; APIPA is only evaluated for the adapter actually carrying traffic.
 - Local link speed shows adapter name, media type and negotiated Wi-Fi Tx/Rx rates; virtual/VPN links are explicitly marked "not representative of public internet speed".
 - A real speed test runs after user confirmation: adaptive download, upload, idle HTTP latency, download/upload load latency and a Bufferbloat grade.
 - The real speed test uses Cloudflare edge speedtest endpoints, capped at roughly 62 MB per run, with progress, an overall timeout and cancel-anytime; NetScope neither uploads nor persists speedtest results.
 - ICMP failure alone does not mean you are offline; the internet verdict combines DNS, TCP 443, TLS, NCSI and multi-target evidence.
+
+### Performance recording & attribution (V0.2)
+
+- A standalone "Performance" workspace between "Ports" and "Diagnostics" with three sub-pages: overview, event timeline and process center. See "What's new in V0.2".
+
+### Interface & runtime
+
+- The software opens the port workspace by default; a unified NetScope icon is wired into the EXE, installer, desktop/Start menu shortcuts, window title bar, taskbar and system tray.
 - Native tray support, close-to-tray, per-user startup on login, system theme, Win11 Mica and Win10 solid-color fallback.
 - Local settings and 3×1 MB sanitized rolling logs; no accounts, no telemetry, no packet-capture driver.
 
-V0.1.5 still does not include traceroute, MTU, network history or per-process bandwidth ranking. The current speedtest result reflects this machine to the selected edge node for that single run; it is not equivalent to the ISP's advertised bandwidth and never runs automatically in the background.
-
-## V0.2 Performance event recording and attribution
+## What's new in V0.2: performance event recording and attribution
 
 - A new standalone "Performance" workspace sits between "Ports" and "Diagnostics"; the default home page remains the port workspace.
 - A background Collector process (`NetScope.Collector.exe`) is shipped in the same directory as the app and samples continuously: system and processes every 1 s, ports every 2 s; after a suspected performance event it automatically enters 30–60 s of 500 ms burst sampling.
 - The "I just lagged" button marks the moment you feel lag into the event stream, joining the automatic rules in attribution ranking.
 - The event engine ships 4 rules (CPU contention, memory pressure, IO pressure, network degradation) running through a Normal → Suspected → Capturing → Cooldown state machine with a cooldown to prevent event storms; every conclusion uses "possible/suspected" wording, backed by evidence and confidence.
 - The Impact Score ranks suspect processes by CPU, memory, IO, foreground and user-mark proximity; it only orders evidence and never asserts causation.
-- The event timeline shows 30 s before → during → 30 s after system context for each event; the process center plots per-process CPU/memory/IO curves over time and lists related events, with search.
+- The event timeline shows 30 s before → during → after system context for each event; the process center plots per-process CPU/memory/IO curves over time and lists related events, with search.
 - Performance history is written to `%LocalAppData%\NetScope\data\netscope.db` (SQLite/WAL); retention days are adjustable in settings (default 7, supports 1/7/14/30), and data older than 24 h is automatically downsampled to 30 s buckets.
 - History is on by default and can be disabled in settings; recording, attribution and storage are fully local — nothing is uploaded and no account is required.
 
