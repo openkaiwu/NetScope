@@ -52,7 +52,7 @@ NetScope is a lightweight Windows 10/11 port management and network diagnostic t
 
 V0.2 records and attributes performance events; it still does not include traceroute, MTU or per-process real-time network bandwidth ranking.
 
-See [Installation & usage guide](docs/安装与使用说明.md) for installation, icon and default-page details.
+See [Installation & usage guide](docs/安装与使用说明.md) for installation, icon and default-page details, and the [development roadmap](docs/开发路线图.md) (Chinese) for product positioning, gap analysis and the version plan.
 
 ## Screenshots
 
