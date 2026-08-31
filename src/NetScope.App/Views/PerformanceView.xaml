@@ -385,7 +385,20 @@
                             <TextBlock Text="进程详情" FontWeight="SemiBold" Margin="2,0,0,8"/>
                             <TextBlock Grid.Row="1" Text="{Binding ProcessDetailStatus}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="2,0,0,8"/>
                             <StackPanel Grid.Row="2">
-                                <TextBlock Text="最近 15 分钟 CPU 趋势" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="2,0,0,4"/>
+                                <TextBlock Text="身份识别" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="2,0,0,4"/>
+                                <Border Background="{DynamicResource SurfaceAltBrush}" CornerRadius="8" Padding="10" Margin="0,0,0,6"
+                                        Visibility="{Binding HasProcessIdentity, Converter={StaticResource BoolToVisibility}}">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding ProcessIdentityTitle}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                        <TextBlock Text="{Binding ProcessIdentityPublisher}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                        <TextBlock Text="{Binding ProcessIdentityProduct}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                        <TextBlock Text="{Binding ProcessIdentitySignature}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                        <TextBlock Text="{Binding ProcessIdentityPath}" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
+                                        <TextBlock Text="{Binding ProcessIdentityPurpose}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                                        <TextBlock Text="{Binding ProcessIdentityAdvice}" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                                <TextBlock Text="最近 15 分钟 CPU 趋势" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="2,8,0,4"/>
                                 <controls:SparklineVisual Values="{Binding ProcessCpuHistory}" EmptyText="选择进程后显示历史曲线" Height="72"/>
                                 <TextBlock Text="相关事件" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="2,14,0,4"/>
                                 <ItemsControl ItemsSource="{Binding ProcessEvents}" MaxHeight="160">

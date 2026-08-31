@@ -34,6 +34,8 @@
                 <TextBlock Text="端口详情" FontSize="17" FontWeight="SemiBold"/>
                 <Border Margin="0,14,0,0" Padding="12" Background="{DynamicResource SurfaceAltBrush}" CornerRadius="8"><StackPanel><TextBlock Text="{Binding SelectedRow.Port, StringFormat=端口 {0}, TargetNullValue=选择表格中的端口}" FontSize="20" FontWeight="SemiBold"/><TextBlock Text="{Binding SelectedRow.Service, TargetNullValue=—}" Foreground="{DynamicResource AccentBrush}" Margin="0,4,0,0"/></StackPanel></Border>
                 <TextBlock Text="当前占用" FontWeight="SemiBold" Margin="0,18,0,7"/><TextBlock Text="{Binding SelectedRow.ProcessName, TargetNullValue=尚未选择}"/><TextBlock Text="{Binding SelectedRow.ProcessPath, TargetNullValue=从左侧选择一条绑定记录}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,4,0,0"/>
+                <TextBlock Text="{Binding SelectedProcessIdentity}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,6,0,0"/>
+                <TextBlock Text="{Binding SelectedProcessSignature}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" FontSize="11" Margin="0,3,0,0"/>
                 <TextBlock Text="标准 / 惯例用途" FontWeight="SemiBold" Margin="0,18,0,7"/><TextBlock Text="{Binding SelectedRow.Purpose, TargetNullValue=端口用途只描述注册或惯例用途，不推断真实流量内容}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"/>
                 <Border Background="#EAF2FD" CornerRadius="8" Padding="10" Margin="0,18,0,0"><TextBlock Text="需要查询未占用端口？切换到“端口百科”。" TextWrapping="Wrap" Foreground="{DynamicResource AccentBrush}"/></Border>
             </StackPanel></ScrollViewer>

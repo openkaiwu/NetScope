@@ -5,6 +5,7 @@ using System.Windows.Data;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using NetScope.Core.Abstractions;
+using NetScope.Core.Knowledge;
 using NetScope.Core.Models;
 using NetScope.Core.Services;
 
@@ -94,6 +95,7 @@ public sealed partial class PortViewModel : ObservableObject, IDisposable
 {
     private readonly IPortTableProvider _provider;
     private readonly IProcessMetadataResolver _processResolver;
+    private readonly IProcessFileMetadataProvider? _fileMetadata;
     private readonly IPortCatalog _catalog;
     private readonly PortRecommendationService _recommendation;
     private readonly IPortSystemRangeProvider _systemRangeProvider;
@@ -109,10 +111,12 @@ public sealed partial class PortViewModel : ObservableObject, IDisposable
 
     public PortViewModel(IPortTableProvider provider, IProcessMetadataResolver processResolver, IPortCatalog catalog,
         IPortAvailabilityProbe availability, IPortSystemRangeProvider systemRangeProvider,
-        PortSnapshotDiffer differ, PortSearchEngine search, AppSettings settings)
+        PortSnapshotDiffer differ, PortSearchEngine search, AppSettings settings,
+        IProcessFileMetadataProvider? fileMetadata = null)
     {
         _provider = provider;
         _processResolver = processResolver;
+        _fileMetadata = fileMetadata;
         _catalog = catalog;
         _recommendation = new(catalog, availability);
         _systemRangeProvider = systemRangeProvider;
@@ -158,6 +162,8 @@ public sealed partial class PortViewModel : ObservableObject, IDisposable
     [ObservableProperty] private int _processCount;
     [ObservableProperty] private int _changeCount;
     [ObservableProperty] private PortRowViewModel? _selectedRow;
+    [ObservableProperty] private string _selectedProcessIdentity = "";
+    [ObservableProperty] private string _selectedProcessSignature = "";
     [ObservableProperty] private PortProtocol _recommendationProtocol = PortProtocol.Tcp;
     [ObservableProperty] private string _catalogSearchText = string.Empty;
     [ObservableProperty] private string _catalogProtocolFilter = "全部";
@@ -186,6 +192,41 @@ public sealed partial class PortViewModel : ObservableObject, IDisposable
     partial void OnCatalogProtocolFilterChanged(string value) => CatalogRowsView.Refresh();
     partial void OnAvailabilityFilterChanged(string value) => AvailabilityRowsView.Refresh();
     partial void OnIsPausedChanged(bool value) => StatusText = value ? "数据已冻结" : "实时监测中";
+
+    partial void OnSelectedRowChanged(PortRowViewModel? value) => _ = LoadSelectedProcessIdentityAsync(value);
+
+    /// <summary>
+    /// 端口详情的身份识别：系统进程走内置知识库（含用途与结束建议）；
+    /// 第三方进程读文件元数据与签名（有磁盘缓存，重复选择同一进程不再验证）。
+    /// </summary>
+    private async Task LoadSelectedProcessIdentityAsync(PortRowViewModel? row)
+    {
+        SelectedProcessIdentity = "";
+        SelectedProcessSignature = "";
+        if (row?.Snapshot.Process is not { } process) return;
+
+        var exeName = Path.GetFileName(process.Path ?? process.Name);
+        if (ProcessKnowledgeBase.TryLookup(exeName, out var entry) && entry is not null)
+        {
+            SelectedProcessIdentity = $"{entry.DisplayName} · {entry.Purpose}";
+            SelectedProcessSignature = entry.TerminationAdvice;
+            return;
+        }
+
+        if (string.IsNullOrEmpty(process.Path) || _fileMetadata is null) return;
+        var metadata = await _fileMetadata.ResolveAsync(process.Path);
+        if (metadata is null) return;
+        SelectedProcessIdentity = metadata.FileDescription is { } description
+            ? $"{description}" + (metadata.CompanyName is { } company ? $" · {company}" : "")
+            : metadata.CompanyName ?? "";
+        SelectedProcessSignature = metadata.SignatureState switch
+        {
+            SignatureState.Valid => "数字签名有效",
+            SignatureState.Missing => "可执行文件未签名",
+            SignatureState.Invalid => "数字签名无法验证",
+            _ => ""
+        };
+    }
 
     public async Task StartAsync()
     {

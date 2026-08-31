@@ -13,6 +13,15 @@ public interface IProcessMetadataResolver
     ValueTask<ProcessIdentity> ResolveAsync(int processId, CancellationToken cancellationToken = default);
 }
 
+/// <summary>
+/// 可执行文件静态身份提供方：公司/产品/描述/版本 + 本地签名验证结果。
+/// 结果按“路径+大小+修改时间”缓存（内存 + 磁盘），文件未变时不重复读取或验证签名。
+/// </summary>
+public interface IProcessFileMetadataProvider
+{
+    ValueTask<ProcessFileMetadata?> ResolveAsync(string filePath, CancellationToken cancellationToken = default);
+}
+
 public interface IPortCatalog
 {
     PortCatalogEntry? Find(int port, PortProtocol protocol);

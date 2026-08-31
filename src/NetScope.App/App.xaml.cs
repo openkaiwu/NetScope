@@ -5,6 +5,7 @@ using NetScope.Core.Abstractions;
 using NetScope.Core.Services;
 using NetScope.Windows.Ipc;
 using NetScope.Windows.Logging;
+using NetScope.Windows.Metadata;
 using NetScope.Windows.Network;
 using NetScope.Windows.Ports;
 using NetScope.Windows.Settings;
@@ -46,6 +47,7 @@ public partial class App : Application
             ? new CollectorPortTableProvider(collectorClient, new WindowsPortTableProvider())
             : new WindowsPortTableProvider();
         var processResolver = new WindowsProcessMetadataResolver();
+        var fileMetadata = new CachedProcessMetadataProvider();
         var availability = new WindowsPortAvailabilityProbe();
         var systemRanges = new WindowsPortSystemRangeProvider();
         var networkSnapshot = new SystemNetworkSnapshotProvider();
@@ -57,8 +59,8 @@ public partial class App : Application
         var engine = new DiagnosticEngine(networkSnapshot, probes);
         var performanceTester = new HttpNetworkPerformanceTester();
 
-        var port = new PortViewModel(portTable, processResolver, catalog, availability, systemRanges, new PortSnapshotDiffer(), new PortSearchEngine(), settings);
-        var performance = new PerformanceViewModel(collectorClient ?? new NullCollectorClient(), settings);
+        var port = new PortViewModel(portTable, processResolver, catalog, availability, systemRanges, new PortSnapshotDiffer(), new PortSearchEngine(), settings, fileMetadata);
+        var performance = new PerformanceViewModel(collectorClient ?? new NullCollectorClient(), settings, fileMetadata);
         var diagnostic = new DiagnosticViewModel(engine, networkSnapshot, performanceTester, settings);
         var settingsVm = new SettingsViewModel(settingsStore, new StartupRegistration(), settings);
         var main = new MainViewModel(port, performance, diagnostic, settingsVm);
@@ -75,7 +77,7 @@ public partial class App : Application
                 MemoryTrimmer.Trim();
             }
         };
-        _window.Closed += (_, _) => { port.Dispose(); performance.Dispose(); };
+        _window.Closed += (_, _) => { port.Dispose(); performance.Dispose(); fileMetadata.Dispose(); };
 
         if (!e.Args.Contains("--no-tray", StringComparer.OrdinalIgnoreCase))
         {

@@ -4,6 +4,7 @@ using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using NetScope.Core.Abstractions;
+using NetScope.Core.Knowledge;
 using NetScope.Core.Models;
 using NetScope.Core.Services;
 
@@ -105,6 +106,8 @@ public sealed partial class PerformanceViewModel : ObservableObject, IDisposable
     private readonly ICollectorClient _client;
     private readonly DispatcherTimer _timer;
     private readonly DispatcherTimer _slowTimer;
+    private readonly Services.ProcessPathLookup _pathLookup;
+    private readonly IProcessFileMetadataProvider? _fileMetadata;
     private int _tick;
 
     [ObservableProperty] private bool _collectorConnected;
@@ -121,6 +124,13 @@ public sealed partial class PerformanceViewModel : ObservableObject, IDisposable
     [ObservableProperty] private ProcessImpactRowViewModel? _selectedProcess;
     [ObservableProperty] private string _processSearchText = "";
     [ObservableProperty] private string _processDetailStatus = "";
+    [ObservableProperty] private string _processIdentityTitle = "";
+    [ObservableProperty] private string _processIdentityPath = "";
+    [ObservableProperty] private string _processIdentityPublisher = "";
+    [ObservableProperty] private string _processIdentityProduct = "";
+    [ObservableProperty] private string _processIdentitySignature = "";
+    [ObservableProperty] private string _processIdentityPurpose = "";
+    [ObservableProperty] private string _processIdentityAdvice = "";
     [ObservableProperty] private string _historyNotice;
     [ObservableProperty] private bool _isOverviewSelected = true;
     [ObservableProperty] private bool _isEventsSelected;
@@ -137,9 +147,17 @@ public sealed partial class PerformanceViewModel : ObservableObject, IDisposable
     public ObservableCollection<double> ProcessCpuHistory { get; } = [];
     public ObservableCollection<EventCardViewModel> ProcessEvents { get; } = [];
 
-    public PerformanceViewModel(ICollectorClient client, AppSettings settings)
+    /// <summary>身份识别卡片是否可见：任一身份字段非空即显示。</summary>
+    public bool HasProcessIdentity =>
+        !string.IsNullOrEmpty(ProcessIdentityTitle) || !string.IsNullOrEmpty(ProcessIdentityPublisher) ||
+        !string.IsNullOrEmpty(ProcessIdentityPurpose);
+
+    public PerformanceViewModel(ICollectorClient client, AppSettings settings,
+        IProcessFileMetadataProvider? fileMetadata = null, Services.ProcessPathLookup? pathLookup = null)
     {
         _client = client;
+        _fileMetadata = fileMetadata;
+        _pathLookup = pathLookup ?? new Services.ProcessPathLookup();
         _historyNotice = $"性能历史仅保存在本机（%LocalAppData%\\NetScope\\data），默认保留 {settings.HistoryRetentionDays} 天，可在设置中调整或关闭。";
         _timer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(2) };
         _timer.Tick += async (_, _) => await PollAsync();
@@ -295,6 +313,7 @@ public sealed partial class PerformanceViewModel : ObservableObject, IDisposable
     {
         ProcessCpuHistory.Clear();
         ProcessEvents.Clear();
+        ClearProcessIdentity();
         if (row is null) return;
 
         var samples = await _client.QueryProcessHistoryAsync(row.Sample.Process, DateTimeOffset.Now.AddMinutes(-15), DateTimeOffset.Now);
@@ -309,6 +328,74 @@ public sealed partial class PerformanceViewModel : ObservableObject, IDisposable
                 card.Event.PrimaryProcess == row.Sample.Process)
                 ProcessEvents.Add(card);
         }
+
+        await LoadProcessIdentityAsync(row);
+    }
+
+    private void ClearProcessIdentity()
+    {
+        ProcessIdentityTitle = "";
+        ProcessIdentityPath = "";
+        ProcessIdentityPublisher = "";
+        ProcessIdentityProduct = "";
+        ProcessIdentitySignature = "";
+        ProcessIdentityPurpose = "";
+        ProcessIdentityAdvice = "";
+        OnPropertyChanged(nameof(HasProcessIdentity));
+    }
+
+    private void SetProcessIdentityVisible() => OnPropertyChanged(nameof(HasProcessIdentity));
+
+    /// <summary>
+    /// 身份识别：进程知识库（系统进程）优先；第三方进程读取可执行文件元数据与签名。
+    /// 全部在后台线程完成，仅命中知识库或拿到元数据后填充 UI 字段。
+    /// </summary>
+    private async Task LoadProcessIdentityAsync(ProcessImpactRowViewModel row)
+    {
+        var name = row.Name;
+        if (ProcessKnowledgeBase.TryLookup(name, out var entry) && entry is not null)
+        {
+            ProcessIdentityTitle = entry.DisplayName;
+            ProcessIdentityPath = "";
+            ProcessIdentityPublisher = $"发布者：{entry.Publisher} · 分类：{entry.Category}";
+            ProcessIdentityProduct = "";
+            ProcessIdentitySignature = "";
+            ProcessIdentityPurpose = entry.Purpose;
+            ProcessIdentityAdvice = entry.HighUsageHint + " " + entry.TerminationAdvice;
+            SetProcessIdentityVisible();
+            return;
+        }
+
+        // 第三方进程：经 PID 解析可执行路径，再读元数据（异步线程，签名验证可能耗时数十毫秒）
+        var path = await Task.Run(() => _pathLookup.Resolve(row.Pid));
+        if (string.IsNullOrEmpty(path) || _fileMetadata is null)
+        {
+            ProcessIdentityTitle = "";
+            ProcessIdentityPath = "";
+            ProcessIdentityPublisher = "未收录进程";
+            ProcessIdentityProduct = "";
+            ProcessIdentitySignature = "";
+            ProcessIdentityPurpose = "该进程不在内置知识库中；路径需要更高权限时无法进一步识别。";
+            ProcessIdentityAdvice = "";
+            SetProcessIdentityVisible();
+            return;
+        }
+
+        var metadata = await _fileMetadata.ResolveAsync(path);
+        ProcessIdentityTitle = metadata?.FileDescription ?? name;
+        ProcessIdentityPath = "路径：" + path;
+        ProcessIdentityPublisher = metadata?.CompanyName is { } company ? $"发布者：{company}" : "发布者：未知";
+        ProcessIdentityProduct = metadata?.ProductName is { } product ? $"产品：{product}" + (metadata.FileVersion is { } v ? $" · {v}" : "") : "";
+        ProcessIdentitySignature = metadata?.SignatureState switch
+        {
+            SignatureState.Valid => "数字签名：有效",
+            SignatureState.Missing => "数字签名：未签名",
+            SignatureState.Invalid => "数字签名：无法验证",
+            _ => ""
+        };
+        ProcessIdentityPurpose = "";
+        ProcessIdentityAdvice = "";
+        SetProcessIdentityVisible();
     }
 
     [RelayCommand]

@@ -52,7 +52,15 @@ NetScope is a lightweight Windows 10/11 port management and network diagnostic t
 
 V0.2 records and attributes performance events; it still does not include traceroute, MTU or per-process real-time network bandwidth ranking.
 
-See [Installation & usage guide](docs/安装与使用说明.md) for installation, icon and default-page details, and the [development roadmap](docs/开发路线图.md) (Chinese) for product positioning, gap analysis and the version plan.
+## V0.3 new features (in progress): process identity
+
+- Process knowledge base: 30+ built-in profiles of common Windows system processes (svchost/dwm/MsMpEng/SearchIndexer/lsass/audiodg etc.). Select a process in the performance workspace "Process center" and the detail pane explains what it is, why it runs, what high usage means and whether it is safe to end.
+- Third-party process recognition: unrecognized processes show executable description, publisher, product version and signature state; signature checking matches the Explorer "Digital Signatures" property page (embedded signature plus Windows catalog signature), fully offline.
+- Metadata cache: verification results are cached in memory and in `%LocalAppData%\NetScope\cache\process-metadata.json`, keyed by path + modified time + size; unchanged files are never re-verified, so selecting the same process again costs nothing.
+
+Still to come in V0.3: 7-day process/port history queries and a 7-day Impact ranking (see the roadmap).
+
+See [Installation & usage guide](docs/安装与使用说明.md) for installation, icon and default-page details, the [development roadmap](docs/开发路线图.md) (Chinese) for product positioning, gap analysis and the version plan, and the [architecture guide](docs/架构说明.md) (Chinese) for how the current build is put together.
 
 ## Screenshots
 

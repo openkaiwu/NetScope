@@ -108,3 +108,24 @@ final result: passed
 - 单元与集成测试：90/90 通过（新增性能事件引擎 11、SQLite 历史存储 9、影响度评分 13 共 33 个 V0.2 测试）。
 - Release 全量发布成功；已发布 Collector 的 IPC 冒烟（系统/进程/端口采样、markLag、事件、历史查询、DB 落盘）通过。
 - 便携 ZIP 与 Inno Setup 安装包均包含 `NetScope.Collector.exe`。
+
+## V0.3 进程身份识别 QA（进行中）
+
+### 覆盖内容
+
+- 进程知识库：`src/NetScope.Core/Knowledge/` 内置 34 条 Windows 常见系统进程条目（svchost/dwm/lsass/MsMpEng/SearchIndexer/audiodg/System/Registry/Memory Compression/vmmem 等），每条含显示名、分类、发布者、用途、高占用含义与结束建议；键为去路径、去 `.exe`、小写归一化后的进程名。
+- 第三方进程识别：`src/NetScope.Windows/Metadata/` 的 `AuthenticodeVerifier` 实现 WinVerifyTrust 两级验证——先嵌入式签名（GENERIC_VERIFY_V2），未命中再走 Windows 目录签名（DriverActionVerify + CryptCATAdmin 系列计算哈希并枚举目录），全部本地完成、不联网；`CachedProcessMetadataProvider` 提供内存 + 磁盘 JSON（`%LocalAppData%\NetScope\cache\process-metadata.json`）两级缓存，键 = 路径 + 修改时间 + 大小。
+- UI 接线：性能“进程中心”详情面板新增“身份识别”卡片（知识库命中显示用途与建议；未收录进程显示描述/发布者/版本/签名状态）；端口工作台“实时占用”详情面板增加知识库说明与签名状态行。
+
+### 冒烟验证
+
+- WinVerifyTrust 实机校验：`System32\notepad.exe` 与复制品经目录签名验证返回 0（有效）；无签名桩文件返回 `TRUST_E_NOSIGNATURE`（映射“未签名”）。注意：Windows 系统文件多为目录签名，仅验证嵌入式签名会误报“未签名”，因此两级验证为必需。
+- 缓存键 bug 修复记录：磁盘缓存加载时若按“当前文件”重算键，文件被替换后反而会命中旧记录；改为加载时按记录内保存的大小/时间重建键。
+- VisualQa 渲染对比：进程中心详情面板文本块 6 → 10，确认“身份识别”卡片真实渲染（选中 svchost.exe 命中知识库）。
+- 测试：113/113 通过（新增知识库 5、磁盘缓存 5、签名验证与提供方 5 共 15 个测试）。
+
+### 已知边界
+
+- 知识库为静态内置数据，不含第三方软件条目（第三方走签名/版本信息识别）。
+- 拒绝读取元数据时（系统关键进程或权限不足）仅显示知识库内容或“未收录进程”提示，不弹错误。
+- 进程/端口 7 天历史查询与 7 天 Impact 排行仍未实现（V0.3 后两项）。
