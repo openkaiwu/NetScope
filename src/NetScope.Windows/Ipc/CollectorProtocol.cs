@@ -10,7 +10,7 @@ public static class CollectorProtocol
     public const string PipeName = "NetScope.Collector.v2";
     public const string LocalMutexName = @"Local\NetScope.Collector.v2";
     public const int ProtocolVersion = 1;
-    public const string ServerVersion = "0.2.0";
+    public const string ServerVersion = "0.3.0";
     public const int MaxMessageBytes = 2 * 1024 * 1024;
 
     public const string OpHello = "hello";

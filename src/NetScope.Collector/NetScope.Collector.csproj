@@ -9,7 +9,7 @@
     <RootNamespace>NetScope.Collector</RootNamespace>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <Platforms>x64</Platforms>
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
     <Product>NetScope Collector</Product>
     <Description>NetScope 后台性能事件记录器</Description>
     <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
