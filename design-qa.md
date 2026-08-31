@@ -129,3 +129,19 @@ final result: passed
 - 知识库为静态内置数据，不含第三方软件条目（第三方走签名/版本信息识别）。
 - 拒绝读取元数据时（系统关键进程或权限不足）仅显示知识库内容或“未收录进程”提示，不弹错误。
 - 进程/端口 7 天历史查询与 7 天 Impact 排行仍未实现（V0.3 后两项）。
+
+### V0.3 后两项：端口/进程历史与 7 天 Impact 排行
+
+- 端口会话记录：`PortSessionTracker`（Core 纯状态机）对端口快照差分——同一 (端口, 协议, PID) 连续两次出现开启会话、消失或换主结束；过滤非 Listen TCP；进程名开启时解析一次，失败回退 "PID N"。Collector 退出时 `CloseAll` 收尾未结束会话。
+- 存储：SQLite 新增 `PortSessions` 表（CREATE TABLE IF NOT EXISTS，老库启动自动补建）+ 两个索引；聚合查询按“端口+协议+进程名”分组、累计时长降序；保留期清理覆盖该表。
+- IPC 新增三个操作：`portHistory`（端口占用聚合）、`processEvents`（按进程名过滤 7 天事件，返回总数+最新 N 条）、`impactRanking`（7 天排行）。
+- 7 天排行公式（`ImpactRankingCalculator`）：频率 45%（15 次封顶）+ 累计时长 30%（2 小时封顶，按贡献者影响分占比分摊）+ 卡顿重合 25%（90 秒邻近窗口、4 次封顶）；UserMarkedLag 事件本身不计入资源事件。
+- UI：性能概览新增“过去 7 天最可能拖慢电脑的软件”卡片（Top 5）；进程详情新增 7 天事件汇总与列表（置于“相关事件”之前）；端口实时占用详情新增“过去 7 天占用历史”；进程详情面板包 ScrollViewer 防溢出。
+- VisualQa：截图整体升级 v030（default-port/performance/events/processes 四张），样本数据覆盖排行、7 天事件与端口占用史；修复选中非知识库进程时身份加载异步续体不落地的渲染问题（改选 svchost 同步路径）。
+- 像素验证：概览底部排行卡 0→4 文本块；进程详情面板 10→15；端口详情面板 14→25。
+- 测试：130/130 通过（新增 ImpactRankingCalculator 7、PortSessionTracker 6、SqlitePortSession 4 共 17 个）。
+
+### 已知边界（补充）
+
+- 端口会话依赖 Collector 持续运行：Collector 崩溃时未结束的会话丢失（正常退出会收尾）；会话历史从 V0.3 起积累，旧版本无此数据。
+- 7 天排行口径依赖事件历史：关闭性能历史或保留期设为 1 天时，排行只反映对应窗口。

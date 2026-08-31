@@ -4,7 +4,7 @@
 
 NetScope is a lightweight Windows 10/11 port management and network diagnostic tool with a Chinese interface. It keeps standard technical terms such as PID, TCP, UDP, DNS, DHCP and TLS; all core operations stay read-only.
 
-![NetScope main window (default port workspace)](design/qa/netscope-default-port-v015.png)
+![NetScope main window (default port workspace)](design/qa/netscope-default-port-v030.png)
 
 ## Feature overview
 
@@ -52,25 +52,26 @@ NetScope is a lightweight Windows 10/11 port management and network diagnostic t
 
 V0.2 records and attributes performance events; it still does not include traceroute, MTU or per-process real-time network bandwidth ranking.
 
-## V0.3 new features (in progress): process identity
+## V0.3 new features: process identity and long-term impact
 
-- Process knowledge base: 30+ built-in profiles of common Windows system processes (svchost/dwm/MsMpEng/SearchIndexer/lsass/audiodg etc.). Select a process in the performance workspace "Process center" and the detail pane explains what it is, why it runs, what high usage means and whether it is safe to end.
+- Process knowledge base: 34 built-in profiles of common Windows system processes (svchost/dwm/MsMpEng/SearchIndexer/lsass/audiodg etc.). Select a process in the performance workspace "Process center" and the detail pane explains what it is, why it runs, what high usage means and whether it is safe to end.
 - Third-party process recognition: unrecognized processes show executable description, publisher, product version and signature state; signature checking matches the Explorer "Digital Signatures" property page (embedded signature plus Windows catalog signature), fully offline.
 - Metadata cache: verification results are cached in memory and in `%LocalAppData%\NetScope\cache\process-metadata.json`, keyed by path + modified time + size; unchanged files are never re-verified, so selecting the same process again costs nothing.
-
-Still to come in V0.3: 7-day process/port history queries and a 7-day Impact ranking (see the roadmap).
+- Port occupancy history: the background records port sessions (one session = the same process holding the same port continuously, transient bindings filtered); the port detail pane shows who held port 8080 in the past 7 days, how many times and for how long.
+- 7-day process events: the process detail pane lists how many performance events involved that process name in the past 7 days plus the latest records (aggregated by process name across PID instances).
+- 7-day impact ranking: the overview page shows "software most likely to slow down your PC in the past 7 days", aggregating event frequency (45%), cumulative duration (30%) and overlap with user lag marks (25%); it orders evidence and never asserts causation.
 
 See [Installation & usage guide](docs/安装与使用说明.md) for installation, icon and default-page details, the [development roadmap](docs/开发路线图.md) (Chinese) for product positioning, gap analysis and the version plan, and the [architecture guide](docs/架构说明.md) (Chinese) for how the current build is put together.
 
 ## Screenshots
 
 <p align="center">
-  <img src="design/qa/netscope-performance-v020.png" width="49%" alt="Performance overview"/>
-  <img src="design/qa/netscope-performance-events-v020.png" width="49%" alt="Event timeline"/>
+  <img src="design/qa/netscope-performance-v030.png" width="49%" alt="Performance overview"/>
+  <img src="design/qa/netscope-performance-events-v030.png" width="49%" alt="Event timeline"/>
 </p>
 <p align="center">
-  <img src="design/qa/netscope-performance-processes-v020.png" width="49%" alt="Process center"/>
-  <img src="design/qa/netscope-default-port-v015.png" width="49%" alt="Port workspace"/>
+  <img src="design/qa/netscope-performance-processes-v030.png" width="49%" alt="Process center"/>
+  <img src="design/qa/netscope-default-port-v030.png" width="49%" alt="Port workspace"/>
 </p>
 
 ## Project structure

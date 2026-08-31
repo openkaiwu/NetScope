@@ -25,6 +25,10 @@ public interface IPerformanceHistoryStore : IAsyncDisposable
     ValueTask<IReadOnlyList<SystemPerformanceSample>> QuerySystemAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default);
     ValueTask<IReadOnlyList<ProcessPerformanceSample>> QueryProcessAsync(ProcessInstanceKey process, DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default);
     ValueTask<IReadOnlyList<PerformanceEvent>> QueryEventsAsync(DateTimeOffset from, DateTimeOffset to, int limit = 200, CancellationToken cancellationToken = default);
+    /// <summary>记录一条已结束的端口占用会话。</summary>
+    ValueTask AppendPortSessionAsync(PortSessionRecord session, CancellationToken cancellationToken = default);
+    /// <summary>查询某端口在时间窗内的占用聚合（按端口+协议+进程名分组，按时长降序）。</summary>
+    ValueTask<IReadOnlyList<PortUsageSummary>> QueryPortUsageAsync(int port, PortProtocol protocol, DateTimeOffset from, DateTimeOffset to, int limit = 20, CancellationToken cancellationToken = default);
     /// <summary>是否处于可用状态。数据库损坏或写入失败时为 false，实时功能应继续工作。</summary>
     bool IsUsable { get; }
 }
@@ -59,4 +63,10 @@ public interface ICollectorClient : IAsyncDisposable
     ValueTask<IReadOnlyList<PerformanceEvent>> GetRecentEventsAsync(int limit = 100, CancellationToken cancellationToken = default);
     ValueTask<IReadOnlyList<SystemPerformanceSample>> QuerySystemHistoryAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default);
     ValueTask<IReadOnlyList<ProcessPerformanceSample>> QueryProcessHistoryAsync(ProcessInstanceKey process, DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default);
+    /// <summary>某端口在时间窗内的占用史（谁占过、几次、累计多久）。</summary>
+    ValueTask<IReadOnlyList<PortUsageSummary>> QueryPortUsageAsync(int port, PortProtocol protocol, DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default);
+    /// <summary>某进程名在时间窗内关联的性能事件（总数 + 最新若干条）。</summary>
+    ValueTask<ProcessEventsSummary> QueryProcessEventsAsync(string processName, int days = 7, int limit = 10, CancellationToken cancellationToken = default);
+    /// <summary>过去 N 天的影响排行：谁最可能拖慢电脑（只排序证据，不下因果结论）。</summary>
+    ValueTask<IReadOnlyList<ImpactRankEntry>> GetImpactRankingAsync(int days = 7, int limit = 10, CancellationToken cancellationToken = default);
 }

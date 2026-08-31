@@ -95,6 +95,26 @@ public sealed partial class EventCardViewModel : ObservableObject
     public string PrimaryProcessText => string.IsNullOrEmpty(Event.PrimaryProcessName) ? "" : $"主关联进程：{Event.PrimaryProcessName}（PID {Event.PrimaryProcess?.ProcessId}）";
 }
 
+/// <summary>7 天影响排行行：聚合证据（事件次数/累计时长/卡顿重合）合成的排序，不代表因果定责。</summary>
+public sealed class ImpactRankRowViewModel(ImpactRankEntry entry, int rank)
+{
+    public int Rank { get; } = rank;
+    public string RankText => $"#{Rank}";
+    public string ProcessName { get; } = entry.ProcessName;
+    public int Score { get; } = entry.Score;
+    public string ScoreText => Score.ToString();
+    public string EventsText => $"事件 {entry.EventCount} 次";
+    public string DurationText => $"累计 {FormatDuration(entry.TotalSeconds)}";
+    public string LagText => entry.LagRelatedCount > 0 ? $"卡顿相关 {entry.LagRelatedCount} 次" : "无卡顿重合";
+
+    internal static string FormatDuration(double seconds) => seconds switch
+    {
+        < 90 => $"{seconds:0} 秒",
+        < 3600 => $"{seconds / 60:0} 分钟",
+        _ => $"{seconds / 3600:0.0} 小时"
+    };
+}
+
 /// <summary>
 /// 性能工作区：概览当前负载、Top 影响进程、事件时间线与“刚才卡了”。
 /// 数据全部来自后台 Collector 的 IPC，仅轮询本机命名管道。
@@ -131,6 +151,8 @@ public sealed partial class PerformanceViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _processIdentitySignature = "";
     [ObservableProperty] private string _processIdentityPurpose = "";
     [ObservableProperty] private string _processIdentityAdvice = "";
+    [ObservableProperty] private string _processWeekSummary = "";
+    [ObservableProperty] private string _impactRankingStatus = "";
     [ObservableProperty] private string _historyNotice;
     [ObservableProperty] private bool _isOverviewSelected = true;
     [ObservableProperty] private bool _isEventsSelected;
@@ -146,6 +168,8 @@ public sealed partial class PerformanceViewModel : ObservableObject, IDisposable
     public ObservableCollection<double> EventNetworkHistory { get; } = [];
     public ObservableCollection<double> ProcessCpuHistory { get; } = [];
     public ObservableCollection<EventCardViewModel> ProcessEvents { get; } = [];
+    public ObservableCollection<EventCardViewModel> ProcessWeekEvents { get; } = [];
+    public ObservableCollection<ImpactRankRowViewModel> ImpactRanking { get; } = [];
 
     /// <summary>身份识别卡片是否可见：任一身份字段非空即显示。</summary>
     public bool HasProcessIdentity =>
@@ -268,11 +292,26 @@ public sealed partial class PerformanceViewModel : ObservableObject, IDisposable
             if (selectedId is { } id && RecentEvents.FirstOrDefault(x => x.Event.Id == id) is { } restored)
                 SelectedEvent = restored;
             if (SelectedEvent is not null) await LoadEventContextAsync(SelectedEvent);
+
+            await LoadImpactRankingAsync();
         }
         catch (Exception)
         {
             // 事件轮询失败静默重试
         }
+    }
+
+    /// <summary>7 天影响排行：聚合历史事件（频率/时长/卡顿重合），随事件轮询一起低频刷新。</summary>
+    private async Task LoadImpactRankingAsync()
+    {
+        var ranking = await _client.GetImpactRankingAsync(7, 5);
+        ImpactRanking.Clear();
+        var rank = 1;
+        foreach (var entry in ranking)
+            ImpactRanking.Add(new ImpactRankRowViewModel(entry, rank++));
+        ImpactRankingStatus = ranking.Count > 0
+            ? ""
+            : "暂无数据：需要开启性能历史并积累事件（含用户“刚才卡了”标记）";
     }
 
     partial void OnSelectedEventChanged(EventCardViewModel? value) => _ = LoadEventContextAsync(value);
@@ -313,6 +352,8 @@ public sealed partial class PerformanceViewModel : ObservableObject, IDisposable
     {
         ProcessCpuHistory.Clear();
         ProcessEvents.Clear();
+        ProcessWeekEvents.Clear();
+        ProcessWeekSummary = "";
         ClearProcessIdentity();
         if (row is null) return;
 
@@ -330,6 +371,20 @@ public sealed partial class PerformanceViewModel : ObservableObject, IDisposable
         }
 
         await LoadProcessIdentityAsync(row);
+        await LoadProcessWeekEventsAsync(row.Name);
+    }
+
+    /// <summary>该进程名过去 7 天关联的性能事件：总数 + 最新若干条（跨 PID 实例按进程名聚合）。</summary>
+    private async Task LoadProcessWeekEventsAsync(string processName)
+    {
+        var summary = await _client.QueryProcessEventsAsync(processName, 7, 8);
+        ProcessWeekEvents.Clear();
+        foreach (var evt in summary.Events)
+            ProcessWeekEvents.Add(new EventCardViewModel(evt));
+        ProcessWeekSummary = summary.TotalCount > 0
+            ? $"过去 7 天关联性能事件 {summary.TotalCount} 次" +
+              (summary.Events.Count < summary.TotalCount ? $"，显示最新 {summary.Events.Count} 条" : "")
+            : "过去 7 天无关联性能事件";
     }
 
     private void ClearProcessIdentity()

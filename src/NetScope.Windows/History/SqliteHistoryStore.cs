@@ -91,6 +91,12 @@ public sealed class SqliteHistoryStore : IPerformanceHistoryStore
         return ValueTask.CompletedTask;
     }
 
+    public ValueTask AppendPortSessionAsync(PortSessionRecord session, CancellationToken cancellationToken = default)
+    {
+        Enqueue(new WriteWorkItem(PortSession: session));
+        return ValueTask.CompletedTask;
+    }
+
     public async ValueTask<IReadOnlyList<SystemPerformanceSample>> QuerySystemAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default)
     {
         if (!IsUsable) return [];
@@ -212,6 +218,51 @@ public sealed class SqliteHistoryStore : IPerformanceHistoryStore
         }
     }
 
+    /// <summary>查询某端口在时间窗内的占用聚合（按端口+协议+进程名分组，按累计时长降序）。</summary>
+    public async ValueTask<IReadOnlyList<PortUsageSummary>> QueryPortUsageAsync(int port, PortProtocol protocol, DateTimeOffset from, DateTimeOffset to, int limit = 20, CancellationToken cancellationToken = default)
+    {
+        if (!IsUsable) return [];
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            await using var command = _connection!.CreateCommand();
+            command.CommandText = """
+                SELECT ProcessName, COUNT(*) AS Sessions, SUM(EndedAt - StartedAt) AS Ticks, MAX(EndedAt) AS LastSeen
+                FROM PortSessions
+                WHERE Port = @port AND Protocol = @protocol AND StartedAt <= @to AND EndedAt >= @from
+                GROUP BY Port, Protocol, ProcessName
+                ORDER BY Ticks DESC
+                LIMIT @limit
+                """;
+            command.Parameters.AddWithValue("@port", port);
+            command.Parameters.AddWithValue("@protocol", (int)protocol);
+            command.Parameters.AddWithValue("@from", from.UtcTicks);
+            command.Parameters.AddWithValue("@to", to.UtcTicks);
+            command.Parameters.AddWithValue("@limit", Math.Clamp(limit, 1, 100));
+
+            var result = new List<PortUsageSummary>();
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                result.Add(new PortUsageSummary(
+                    port, protocol, reader.GetString(0),
+                    (int)reader.GetInt64(1),
+                    reader.GetInt64(2) / 10_000_000.0,
+                    new DateTimeOffset(reader.GetInt64(3), TimeSpan.Zero).ToLocalTime()));
+            }
+            return result;
+        }
+        catch (Exception ex)
+        {
+            await LogAsync("WARN", $"查询端口占用历史失败: {ex.Message}");
+            return [];
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     private async Task<IReadOnlyList<PerformanceEventContributor>> LoadContributorsAsync(Guid eventId, CancellationToken cancellationToken)
     {
         await using var command = _connection!.CreateCommand();
@@ -274,6 +325,7 @@ public sealed class SqliteHistoryStore : IPerformanceHistoryStore
                 if (item.System is { } system) await WriteSystemAsync(system, transaction, cancellationToken);
                 else if (item.Process is { } process) await WriteProcessAsync(process, transaction, cancellationToken);
                 else if (item.Event is { } evt) await WriteEventAsync(evt, transaction, cancellationToken);
+                else if (item.PortSession is { } session) await WritePortSessionAsync(session, transaction, cancellationToken);
             }
             await transaction.CommitAsync(cancellationToken);
         }
@@ -281,6 +333,23 @@ public sealed class SqliteHistoryStore : IPerformanceHistoryStore
         {
             _gate.Release();
         }
+    }
+
+    private async Task WritePortSessionAsync(PortSessionRecord session, SqliteTransaction transaction, CancellationToken cancellationToken)
+    {
+        await using var command = _connection!.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            INSERT INTO PortSessions (Port, Protocol, ProcessName, ProcessId, StartedAt, EndedAt)
+            VALUES (@port, @protocol, @name, @pid, @started, @ended)
+            """;
+        command.Parameters.AddWithValue("@port", session.Port);
+        command.Parameters.AddWithValue("@protocol", (int)session.Protocol);
+        command.Parameters.AddWithValue("@name", session.ProcessName);
+        command.Parameters.AddWithValue("@pid", session.ProcessId);
+        command.Parameters.AddWithValue("@started", session.StartedAt.UtcTicks);
+        command.Parameters.AddWithValue("@ended", session.EndedAt.UtcTicks);
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private async Task WriteSystemAsync(SystemPerformanceSample sample, SqliteTransaction transaction, CancellationToken cancellationToken)
@@ -398,6 +467,7 @@ public sealed class SqliteHistoryStore : IPerformanceHistoryStore
                 DELETE FROM PerformanceEvents WHERE StartedAt < @cutoff;
                 DELETE FROM EventContributors WHERE EventId NOT IN (SELECT Id FROM PerformanceEvents);
                 DELETE FROM ProcessInstances WHERE LastSeen < @cutoff;
+                DELETE FROM PortSessions WHERE EndedAt < @cutoff;
                 DELETE FROM SystemSamples WHERE Timestamp < @day AND Id NOT IN (SELECT MIN(Id) FROM SystemSamples WHERE Timestamp < @day GROUP BY Timestamp / @bucket);
                 DELETE FROM ProcessSamples WHERE Timestamp < @day AND Id NOT IN (SELECT MIN(Id) FROM ProcessSamples WHERE Timestamp < @day GROUP BY ProcessId, StartedAt, Timestamp / @bucket);
                 """;
@@ -504,6 +574,18 @@ public sealed class SqliteHistoryStore : IPerformanceHistoryStore
                 ImpactScore REAL NOT NULL,
                 PRIMARY KEY (EventId, ProcessId, StartedAt)
             ) WITHOUT ROWID;
+
+            CREATE TABLE IF NOT EXISTS PortSessions (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Port INTEGER NOT NULL,
+                Protocol INTEGER NOT NULL,
+                ProcessName TEXT NOT NULL,
+                ProcessId INTEGER NOT NULL,
+                StartedAt INTEGER NOT NULL,
+                EndedAt INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS IX_PortSessions_Port ON PortSessions(Port, Protocol, StartedAt);
+            CREATE INDEX IF NOT EXISTS IX_PortSessions_EndedAt ON PortSessions(EndedAt);
             """;
         await schema.ExecuteNonQueryAsync(cancellationToken);
     }
@@ -610,5 +692,6 @@ public sealed class SqliteHistoryStore : IPerformanceHistoryStore
     private readonly record struct WriteWorkItem(
         SystemPerformanceSample? System = null,
         ProcessPerformanceSample? Process = null,
-        PerformanceEvent? Event = null);
+        PerformanceEvent? Event = null,
+        PortSessionRecord? PortSession = null);
 }

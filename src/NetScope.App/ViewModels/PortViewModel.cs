@@ -91,11 +91,21 @@ public sealed class PortRangeRowViewModel
     public bool IsRecommended { get; }
 }
 
+/// <summary>端口占用史行：某进程在时间窗内占用该端口的聚合（次数/累计时长/最近一次）。</summary>
+public sealed class PortUsageRowViewModel(PortUsageSummary summary)
+{
+    public string ProcessName { get; } = summary.ProcessName;
+    public string SessionsText => $"{summary.SessionCount} 次";
+    public string DurationText => $"共 {ImpactRankRowViewModel.FormatDuration(summary.TotalSeconds)}";
+    public string LastSeenText => summary.LastSeenAt.ToString("MM-dd HH:mm");
+}
+
 public sealed partial class PortViewModel : ObservableObject, IDisposable
 {
     private readonly IPortTableProvider _provider;
     private readonly IProcessMetadataResolver _processResolver;
     private readonly IProcessFileMetadataProvider? _fileMetadata;
+    private readonly ICollectorClient? _historyClient;
     private readonly IPortCatalog _catalog;
     private readonly PortRecommendationService _recommendation;
     private readonly IPortSystemRangeProvider _systemRangeProvider;
@@ -112,11 +122,12 @@ public sealed partial class PortViewModel : ObservableObject, IDisposable
     public PortViewModel(IPortTableProvider provider, IProcessMetadataResolver processResolver, IPortCatalog catalog,
         IPortAvailabilityProbe availability, IPortSystemRangeProvider systemRangeProvider,
         PortSnapshotDiffer differ, PortSearchEngine search, AppSettings settings,
-        IProcessFileMetadataProvider? fileMetadata = null)
+        IProcessFileMetadataProvider? fileMetadata = null, ICollectorClient? historyClient = null)
     {
         _provider = provider;
         _processResolver = processResolver;
         _fileMetadata = fileMetadata;
+        _historyClient = historyClient;
         _catalog = catalog;
         _recommendation = new(catalog, availability);
         _systemRangeProvider = systemRangeProvider;
@@ -164,6 +175,9 @@ public sealed partial class PortViewModel : ObservableObject, IDisposable
     [ObservableProperty] private PortRowViewModel? _selectedRow;
     [ObservableProperty] private string _selectedProcessIdentity = "";
     [ObservableProperty] private string _selectedProcessSignature = "";
+    [ObservableProperty] private string _portUsageStatus = "";
+
+    public ObservableCollection<PortUsageRowViewModel> PortUsageHistory { get; } = [];
     [ObservableProperty] private PortProtocol _recommendationProtocol = PortProtocol.Tcp;
     [ObservableProperty] private string _catalogSearchText = string.Empty;
     [ObservableProperty] private string _catalogProtocolFilter = "全部";
@@ -193,7 +207,38 @@ public sealed partial class PortViewModel : ObservableObject, IDisposable
     partial void OnAvailabilityFilterChanged(string value) => AvailabilityRowsView.Refresh();
     partial void OnIsPausedChanged(bool value) => StatusText = value ? "数据已冻结" : "实时监测中";
 
-    partial void OnSelectedRowChanged(PortRowViewModel? value) => _ = LoadSelectedProcessIdentityAsync(value);
+    partial void OnSelectedRowChanged(PortRowViewModel? value)
+    {
+        _ = LoadSelectedProcessIdentityAsync(value);
+        _ = LoadPortUsageAsync(value);
+    }
+
+    /// <summary>该端口过去 7 天的占用史：谁占过、几次、累计多久（数据来自后台 Collector 的端口会话记录）。</summary>
+    private async Task LoadPortUsageAsync(PortRowViewModel? row)
+    {
+        PortUsageHistory.Clear();
+        PortUsageStatus = "";
+        if (row is null || _historyClient is null) return;
+        try
+        {
+            if (!await _historyClient.IsAvailableAsync())
+            {
+                PortUsageStatus = "后台记录未连接，无法查询占用历史";
+                return;
+            }
+            var usage = await _historyClient.QueryPortUsageAsync(
+                row.Port, row.Snapshot.Protocol, DateTimeOffset.Now.AddDays(-7), DateTimeOffset.Now);
+            foreach (var item in usage)
+                PortUsageHistory.Add(new PortUsageRowViewModel(item));
+            PortUsageStatus = usage.Count > 0
+                ? $"过去 7 天有 {usage.Count} 个进程占用过（按累计时长排序）"
+                : "过去 7 天无占用记录（端口会话随性能历史记录，需保持后台记录开启）";
+        }
+        catch (Exception)
+        {
+            PortUsageStatus = "";
+        }
+    }
 
     /// <summary>
     /// 端口详情的身份识别：系统进程走内置知识库（含用途与结束建议）；

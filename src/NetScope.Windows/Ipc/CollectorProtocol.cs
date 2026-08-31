@@ -22,6 +22,9 @@ public static class CollectorProtocol
     public const string OpEvents = "events";
     public const string OpSystemHistory = "systemHistory";
     public const string OpProcessHistory = "processHistory";
+    public const string OpPortHistory = "portHistory";
+    public const string OpProcessEvents = "processEvents";
+    public const string OpImpactRanking = "impactRanking";
 
     public static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -95,6 +98,18 @@ public sealed record HistoryRequest(DateTimeOffset From, DateTimeOffset To);
 
 public sealed record ProcessHistoryRequest(int ProcessId, DateTimeOffset StartedAt, DateTimeOffset From, DateTimeOffset To);
 
+public sealed record PortHistoryRequest(int Port, int Protocol, DateTimeOffset From, DateTimeOffset To);
+
+public sealed record PortUsageDto(int Port, int Protocol, string ProcessName, int SessionCount, double TotalSeconds, DateTimeOffset LastSeenAt);
+
+public sealed record ProcessEventsRequest(string ProcessName, int Days, int Limit);
+
+public sealed record ProcessEventsDto(int TotalCount, PerformanceEventDto[] Events);
+
+public sealed record ImpactRankingRequest(int Days, int Limit);
+
+public sealed record ImpactRankDto(string ProcessName, int EventCount, double TotalSeconds, int LagRelatedCount, int Score);
+
 public static class CollectorDtos
 {
     public static PortsSnapshotDto ToDto(ImmutableArray<PortBindingSnapshot> bindings) =>
@@ -132,6 +147,18 @@ public static class CollectorDtos
         new(new(dto.ProcessId, dto.StartedAt), dto.Timestamp, dto.Name, dto.CpuPercent, dto.WorkingSetBytes, dto.PrivateBytes,
             dto.ReadBytesPerSecond, dto.WriteBytesPerSecond, dto.ReadOperationsPerSecond, dto.WriteOperationsPerSecond,
             dto.IsAccessible, dto.StatusMessage, dto.IsForeground);
+
+    public static PortUsageDto ToDto(PortUsageSummary summary) =>
+        new(summary.Port, (int)summary.Protocol, summary.ProcessName, summary.SessionCount, summary.TotalSeconds, summary.LastSeenAt);
+
+    public static PortUsageSummary ToModel(PortUsageDto dto) =>
+        new(dto.Port, (PortProtocol)dto.Protocol, dto.ProcessName, dto.SessionCount, dto.TotalSeconds, dto.LastSeenAt);
+
+    public static ImpactRankDto ToDto(ImpactRankEntry entry) =>
+        new(entry.ProcessName, entry.EventCount, entry.TotalSeconds, entry.LagRelatedCount, entry.Score);
+
+    public static ImpactRankEntry ToModel(ImpactRankDto dto) =>
+        new(dto.ProcessName, dto.EventCount, dto.TotalSeconds, dto.LagRelatedCount, dto.Score);
 
     public static PerformanceEventDto ToDto(PerformanceEvent evt) => new(
         evt.Id.ToString(), (int)evt.Type, (int)evt.Status, evt.StartedAt, evt.EndedAt, evt.Confidence,

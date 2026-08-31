@@ -15,5 +15,8 @@ public sealed class NullCollectorClient : ICollectorClient
     public ValueTask<IReadOnlyList<PerformanceEvent>> GetRecentEventsAsync(int limit = 100, CancellationToken cancellationToken = default) => ValueTask.FromResult<IReadOnlyList<PerformanceEvent>>([]);
     public ValueTask<IReadOnlyList<SystemPerformanceSample>> QuerySystemHistoryAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default) => ValueTask.FromResult<IReadOnlyList<SystemPerformanceSample>>([]);
     public ValueTask<IReadOnlyList<ProcessPerformanceSample>> QueryProcessHistoryAsync(ProcessInstanceKey process, DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default) => ValueTask.FromResult<IReadOnlyList<ProcessPerformanceSample>>([]);
+    public ValueTask<IReadOnlyList<PortUsageSummary>> QueryPortUsageAsync(int port, PortProtocol protocol, DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default) => ValueTask.FromResult<IReadOnlyList<PortUsageSummary>>([]);
+    public ValueTask<ProcessEventsSummary> QueryProcessEventsAsync(string processName, int days = 7, int limit = 10, CancellationToken cancellationToken = default) => ValueTask.FromResult(new ProcessEventsSummary(0, []));
+    public ValueTask<IReadOnlyList<ImpactRankEntry>> GetImpactRankingAsync(int days = 7, int limit = 10, CancellationToken cancellationToken = default) => ValueTask.FromResult<IReadOnlyList<ImpactRankEntry>>([]);
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

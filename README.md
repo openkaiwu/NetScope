@@ -4,7 +4,7 @@
 
 NetScope 是一款面向 Windows 10/11 的轻量端口管理与可视化网络诊断工具。界面使用中文，保留 PID、TCP、UDP、DNS、DHCP、TLS 等标准技术术语；核心操作保持只读。
 
-![NetScope 主界面（默认端口工作台）](design/qa/netscope-default-port-v015.png)
+![NetScope 主界面（默认端口工作台）](design/qa/netscope-default-port-v030.png)
 
 ## 功能总览
 
@@ -52,25 +52,26 @@ NetScope 是一款面向 Windows 10/11 的轻量端口管理与可视化网络�
 
 V0.2 记录并归因性能事件，仍不包含路由追踪、MTU 与逐进程实时网络带宽排行。
 
-## V0.3 新增功能（进行中）：进程身份识别
+## V0.3 新增功能：进程身份识别与长期影响
 
-- 进程身份知识库：内置 30+ 条 Windows 常见系统进程说明（svchost/dwm/MsMpEng/SearchIndexer/lsass/audiodg 等），在性能工作区“进程中心”选中进程后，详情面板显示“这是什么、为什么在运行、高占用意味着什么、能不能结束”。
+- 进程身份知识库：内置 34 条 Windows 常见系统进程说明（svchost/dwm/MsMpEng/SearchIndexer/lsass/audiodg 等），在性能工作区“进程中心”选中进程后，详情面板显示“这是什么、为什么在运行、高占用意味着什么、能不能结束”。
 - 第三方进程自动识别：未收录进程显示可执行文件描述、发布者、产品版本与数字签名状态；签名验证与资源管理器“数字签名”属性页一致（嵌入式签名 + Windows 目录签名两级），仅本地验证、不联网。
 - 元数据缓存：验证结果按“可执行路径 + 修改时间 + 文件大小”缓存在内存与 `%LocalAppData%\NetScope\cache\process-metadata.json`，文件未变不重复验证，重复选择同一进程零开销。
-
-V0.3 尚未完成：进程/端口 7 天历史查询、7 天 Impact 排行榜（见开发路线图）。
+- 端口占用史：后台自动记录端口会话（同一进程连续占用同一端口记一次，过滤瞬态绑定），端口详情面板展示“过去 7 天谁占过 8080、各占几次、累计多久”。
+- 进程 7 天事件：进程详情展示该进程名过去 7 天关联的性能事件次数与最新记录（跨 PID 实例按进程名聚合）。
+- 7 天影响排行：概览页“过去 7 天最可能拖慢电脑的软件”榜单，聚合事件频率（45%）、累计时长（30%）与卡顿标记重合（25%）；只排序证据、不下因果结论。
 
 安装、图标和默认页面说明见 [安装与使用说明](docs/安装与使用说明.md)；产品定位、差距分析与后续版本规划见 [开发路线图](docs/开发路线图.md)；当前实际架构见 [架构说明](docs/架构说明.md)。
 
 ## 界面截图
 
 <p align="center">
-  <img src="design/qa/netscope-performance-v020.png" width="49%" alt="性能总览"/>
-  <img src="design/qa/netscope-performance-events-v020.png" width="49%" alt="事件时间线"/>
+  <img src="design/qa/netscope-performance-v030.png" width="49%" alt="性能总览"/>
+  <img src="design/qa/netscope-performance-events-v030.png" width="49%" alt="事件时间线"/>
 </p>
 <p align="center">
-  <img src="design/qa/netscope-performance-processes-v020.png" width="49%" alt="进程中心"/>
-  <img src="design/qa/netscope-default-port-v015.png" width="49%" alt="端口工作台"/>
+  <img src="design/qa/netscope-performance-processes-v030.png" width="49%" alt="进程中心"/>
+  <img src="design/qa/netscope-default-port-v030.png" width="49%" alt="端口工作台"/>
 </p>
 
 ## 工程结构

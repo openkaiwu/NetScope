@@ -106,18 +106,19 @@
         <Grid Grid.Row="2">
             <!-- 概览 -->
             <Grid Visibility="{Binding IsOverviewSelected, Converter={StaticResource BoolToVisibility}}">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
                     <Border Style="{StaticResource CardStyle}" Margin="0,0,10,0">
                         <StackPanel>
                             <TextBlock Text="CPU 占用" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12"/>
@@ -222,7 +223,40 @@
                     </Border>
                 </Grid>
 
-                <TextBlock Grid.Row="2" Text="{Binding HistoryNotice}" Foreground="{DynamicResource TextMutedBrush}" FontSize="11" Margin="2,10,0,0"/>
+                <!-- 过去 7 天影响排行：聚合历史事件的证据排序，不构成因果结论 -->
+                <Border Grid.Row="2" Style="{StaticResource CardStyle}" Padding="12" Margin="0,12,0,0" MaxHeight="190">
+                    <StackPanel>
+                        <TextBlock Text="过去 7 天最可能拖慢电脑的软件（按证据聚合排序，非定责）" FontWeight="SemiBold" Margin="2,0,0,4"/>
+                        <TextBlock Text="{Binding ImpactRankingStatus}" Foreground="{DynamicResource TextMutedBrush}" FontSize="11" Margin="2,0,0,4"/>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding ImpactRanking}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Padding="8,5" CornerRadius="6" Margin="0,0,0,3" Background="{DynamicResource SurfaceAltBrush}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="34"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding RankText}" Foreground="{DynamicResource TextMutedBrush}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding ProcessName}" FontWeight="SemiBold" Margin="0,0,10,0"/>
+                                                    <TextBlock Text="{Binding EventsText}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,10,0"/>
+                                                    <TextBlock Text="{Binding DurationText}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,10,0"/>
+                                                    <TextBlock Text="{Binding LagText}" FontSize="11" Foreground="{DynamicResource AccentBrush}"/>
+                                                </StackPanel>
+                                                <Border Grid.Column="2" Background="{DynamicResource AccentBrush}" CornerRadius="8" Padding="8,2" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding ScoreText}" Foreground="White" FontSize="11" FontWeight="SemiBold"/>
+                                                </Border>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </StackPanel>
+                </Border>
+
+                <TextBlock Grid.Row="3" Text="{Binding HistoryNotice}" Foreground="{DynamicResource TextMutedBrush}" FontSize="11" Margin="2,10,0,0"/>
             </Grid>
 
             <!-- 事件时间线 -->
@@ -384,7 +418,8 @@
                             </Grid.RowDefinitions>
                             <TextBlock Text="进程详情" FontWeight="SemiBold" Margin="2,0,0,8"/>
                             <TextBlock Grid.Row="1" Text="{Binding ProcessDetailStatus}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="2,0,0,8"/>
-                            <StackPanel Grid.Row="2">
+                            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
                                 <TextBlock Text="身份识别" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="2,0,0,4"/>
                                 <Border Background="{DynamicResource SurfaceAltBrush}" CornerRadius="8" Padding="10" Margin="0,0,0,6"
                                         Visibility="{Binding HasProcessIdentity, Converter={StaticResource BoolToVisibility}}">
@@ -400,6 +435,19 @@
                                 </Border>
                                 <TextBlock Text="最近 15 分钟 CPU 趋势" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="2,8,0,4"/>
                                 <controls:SparklineVisual Values="{Binding ProcessCpuHistory}" EmptyText="选择进程后显示历史曲线" Height="72"/>
+                                <TextBlock Text="{Binding ProcessWeekSummary}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="2,14,0,4"/>
+                                <ItemsControl ItemsSource="{Binding ProcessWeekEvents}" MaxHeight="150">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal" Margin="0,3">
+                                                <TextBlock FontFamily="{StaticResource FluentIcons}" Text="{Binding TypeGlyph}" Foreground="{DynamicResource AccentBrush}" Margin="0,0,8,0"/>
+                                                <TextBlock Text="{Binding TypeText}" FontSize="12"/>
+                                                <TextBlock Text="{Binding TimeText}" FontSize="12" Foreground="{DynamicResource TextMutedBrush}" Margin="10,0,0,0"/>
+                                                <TextBlock Text="{Binding DurationText}" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" Margin="10,0,0,0"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
                                 <TextBlock Text="相关事件" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="2,14,0,4"/>
                                 <ItemsControl ItemsSource="{Binding ProcessEvents}" MaxHeight="160">
                                     <ItemsControl.ItemTemplate>
@@ -413,6 +461,7 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
                             </StackPanel>
+                            </ScrollViewer>
                         </Grid>
                     </Border>
                 </Grid>

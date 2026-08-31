@@ -28,6 +28,8 @@ public sealed class SampleCoordinator : IAsyncDisposable
     private readonly Func<int?>? _foregroundPid;
     private readonly Func<bool> _performanceEnabled;
     private readonly Action<PerformanceEvent>? _onEvent;
+    private readonly PortSessionTracker? _portSessions;
+    private readonly Func<int, string?>? _processNameResolver;
     private readonly RollingFileLogger? _logger;
     private readonly CancellationTokenSource _lifetime = new();
 
@@ -53,7 +55,9 @@ public sealed class SampleCoordinator : IAsyncDisposable
         IPerformanceHistoryStore? historyStore = null,
         Func<int?>? foregroundPidProvider = null,
         Action<PerformanceEvent>? onEvent = null,
-        Func<bool>? performanceEnabled = null)
+        Func<bool>? performanceEnabled = null,
+        PortSessionTracker? portSessions = null,
+        Func<int, string?>? processNameResolver = null)
     {
         _systemProvider = systemProvider;
         _processProvider = processProvider;
@@ -65,6 +69,8 @@ public sealed class SampleCoordinator : IAsyncDisposable
         _foregroundPid = foregroundPidProvider;
         _onEvent = onEvent;
         _performanceEnabled = performanceEnabled ?? (() => true);
+        _portSessions = portSessions;
+        _processNameResolver = processNameResolver;
     }
 
     public MemoryRingBuffer<SystemPerformanceSample> SystemBuffer { get; } = new(SystemBufferCapacity);
@@ -269,6 +275,17 @@ public sealed class SampleCoordinator : IAsyncDisposable
     {
         var ports = await _portProvider.CaptureAsync(cancellationToken);
         lock (_stateLock) _lastPorts = ports;
+
+        // 端口占用会话：对快照差分，结束的会话写入历史（受 HistoryEnabled 门控）
+        if (_portSessions is not null)
+        {
+            var closed = _portSessions.Feed(ports, DateTimeOffset.Now, _processNameResolver);
+            if (closed.Count > 0 && _historyStore is not null)
+            {
+                foreach (var session in closed)
+                    await _historyStore.AppendPortSessionAsync(session, cancellationToken);
+            }
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -277,6 +294,17 @@ public sealed class SampleCoordinator : IAsyncDisposable
         if (_loop is not null)
         {
             try { await _loop; }
+            catch (Exception) { }
+        }
+
+        // 退出前把未结束的端口会话收尾落盘，避免长会话丢失
+        if (_portSessions is not null && _historyStore is not null)
+        {
+            try
+            {
+                foreach (var session in _portSessions.CloseAll(DateTimeOffset.Now))
+                    await _historyStore.AppendPortSessionAsync(session);
+            }
             catch (Exception) { }
         }
         _lifetime.Dispose();

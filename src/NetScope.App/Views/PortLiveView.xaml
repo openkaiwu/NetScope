@@ -36,6 +36,27 @@
                 <TextBlock Text="当前占用" FontWeight="SemiBold" Margin="0,18,0,7"/><TextBlock Text="{Binding SelectedRow.ProcessName, TargetNullValue=尚未选择}"/><TextBlock Text="{Binding SelectedRow.ProcessPath, TargetNullValue=从左侧选择一条绑定记录}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,4,0,0"/>
                 <TextBlock Text="{Binding SelectedProcessIdentity}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,6,0,0"/>
                 <TextBlock Text="{Binding SelectedProcessSignature}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" FontSize="11" Margin="0,3,0,0"/>
+                <TextBlock Text="过去 7 天占用历史" FontWeight="SemiBold" Margin="0,18,0,4"/>
+                <TextBlock Text="{Binding PortUsageStatus}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" FontSize="11" Margin="0,0,0,4"/>
+                <ItemsControl ItemsSource="{Binding PortUsageHistory}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Padding="8,5" CornerRadius="6" Margin="0,0,0,3" Background="{DynamicResource SurfaceAltBrush}">
+                                <StackPanel>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding ProcessName}" FontWeight="SemiBold" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding SessionsText}" FontSize="11" Foreground="{DynamicResource AccentBrush}" FontWeight="SemiBold"/>
+                                    </Grid>
+                                    <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                        <TextBlock Text="{Binding DurationText, StringFormat=累计 {0}}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                        <TextBlock Text="{Binding LastSeenText, StringFormat=最近 {0}}" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" Margin="10,0,0,0"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
                 <TextBlock Text="标准 / 惯例用途" FontWeight="SemiBold" Margin="0,18,0,7"/><TextBlock Text="{Binding SelectedRow.Purpose, TargetNullValue=端口用途只描述注册或惯例用途，不推断真实流量内容}" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"/>
                 <Border Background="#EAF2FD" CornerRadius="8" Padding="10" Margin="0,18,0,0"><TextBlock Text="需要查询未占用端口？切换到“端口百科”。" TextWrapping="Wrap" Foreground="{DynamicResource AccentBrush}"/></Border>
             </StackPanel></ScrollViewer>

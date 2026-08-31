@@ -59,7 +59,7 @@ public partial class App : Application
         var engine = new DiagnosticEngine(networkSnapshot, probes);
         var performanceTester = new HttpNetworkPerformanceTester();
 
-        var port = new PortViewModel(portTable, processResolver, catalog, availability, systemRanges, new PortSnapshotDiffer(), new PortSearchEngine(), settings, fileMetadata);
+        var port = new PortViewModel(portTable, processResolver, catalog, availability, systemRanges, new PortSnapshotDiffer(), new PortSearchEngine(), settings, fileMetadata, collectorClient);
         var performance = new PerformanceViewModel(collectorClient ?? new NullCollectorClient(), settings, fileMetadata);
         var diagnostic = new DiagnosticViewModel(engine, networkSnapshot, performanceTester, settings);
         var settingsVm = new SettingsViewModel(settingsStore, new StartupRegistration(), settings);

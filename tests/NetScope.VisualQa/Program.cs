@@ -52,7 +52,9 @@ internal static class Program
             new SamplePortSystemRangeProvider(),
             new PortSnapshotDiffer(),
             new PortSearchEngine(),
-            settings);
+            settings,
+            null,
+            new SampleCollectorClient());
         var now = DateTimeOffset.Now;
         foreach (var snapshot in SamplePortTableProvider.CreateRows())
         {
@@ -89,7 +91,7 @@ internal static class Program
         bitmap.Render(window);
         var encoder = new PngBitmapEncoder();
         encoder.Frames.Add(BitmapFrame.Create(bitmap));
-        using (var stream = File.Create(Path.Combine(output, "netscope-default-port-v015.png")))
+        using (var stream = File.Create(Path.Combine(output, "netscope-default-port-v030.png")))
             encoder.Save(stream);
 
         window.Close();
@@ -102,17 +104,19 @@ internal static class Program
         var performance = new PerformanceViewModel(new SampleCollectorClient(), new AppSettings());
         PopulatePerformance(performance);
 
-        Render(performance, 1140, 720, Path.Combine(output, "netscope-performance-v020.png"));
+        Render(performance, 1140, 720, Path.Combine(output, "netscope-performance-v030.png"));
 
         performance.IsOverviewSelected = false;
         performance.IsEventsSelected = true;
         performance.SelectedEvent = performance.RecentEvents.FirstOrDefault();
-        Render(performance, 1140, 720, Path.Combine(output, "netscope-performance-events-v020.png"));
+        Render(performance, 1140, 720, Path.Combine(output, "netscope-performance-events-v030.png"));
 
         performance.IsEventsSelected = false;
         performance.IsProcessesSelected = true;
-        performance.SelectedProcess = performance.TopProcesses.FirstOrDefault();
-        Render(performance, 1140, 720, Path.Combine(output, "netscope-performance-processes-v020.png"));
+        // 选 svchost：知识库命中 + 7 天事件在同步路径完成，保证截图前数据已就位
+        performance.SelectedProcess = performance.TopProcesses.FirstOrDefault(x => x.Name == "svchost.exe")
+                                      ?? performance.TopProcesses.FirstOrDefault();
+        Render(performance, 1140, 720, Path.Combine(output, "netscope-performance-processes-v030.png"));
 
         performance.Dispose();
     }
@@ -149,6 +153,19 @@ internal static class Program
         };
         foreach (var sample in procs)
             vm.TopProcesses.Add(new ProcessImpactRowViewModel(sample, ImpactScoreCalculator.Compute(sample), 3));
+
+        // 7 天影响排行（概览截图不走轮询，直接填充与 SampleCollectorClient 一致的数据）
+        var ranking = new[]
+        {
+            new ImpactRankEntry("msedge.exe", 14, 3600 * 1.8, 3, 78),
+            new ImpactRankEntry("mysqld.exe", 6, 3600 * 2.4, 1, 61),
+            new ImpactRankEntry("devenv.exe", 4, 3600 * 0.6, 1, 42),
+            new ImpactRankEntry("svchost.exe", 3, 900, 0, 24),
+            new ImpactRankEntry("NetScope.Collector.exe", 1, 120, 0, 9),
+        };
+        var rank = 1;
+        foreach (var entry in ranking)
+            vm.ImpactRanking.Add(new ImpactRankRowViewModel(entry, rank++));
 
         var contributors = new[]
         {
@@ -233,6 +250,33 @@ internal static class Program
             }
             return ValueTask.FromResult<IReadOnlyList<ProcessPerformanceSample>>(list);
         }
+
+        public ValueTask<IReadOnlyList<PortUsageSummary>> QueryPortUsageAsync(int port, PortProtocol protocol, DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<IReadOnlyList<PortUsageSummary>>(port == 135
+                ?
+                [
+                    new PortUsageSummary(135, PortProtocol.Tcp, "svchost", 6, 5 * 24 * 3600 + 3600, _now.AddMinutes(-3)),
+                    new PortUsageSummary(135, PortProtocol.Tcp, "SpoolerService", 1, 3600 * 2.5, _now.AddDays(-4)),
+                ]
+                : []);
+
+        public ValueTask<ProcessEventsSummary> QueryProcessEventsAsync(string processName, int days = 7, int limit = 10, CancellationToken cancellationToken = default)
+        {
+            var known = processName.StartsWith("msedge", StringComparison.OrdinalIgnoreCase) ||
+                        processName.StartsWith("svchost", StringComparison.OrdinalIgnoreCase);
+            return ValueTask.FromResult(new ProcessEventsSummary(known ? 3 : 0,
+                known ? BuildEvents().Where(e => e.Type != PerformanceEventType.UserMarkedLag).Take(limit).ToList() : []));
+        }
+
+        public ValueTask<IReadOnlyList<ImpactRankEntry>> GetImpactRankingAsync(int days = 7, int limit = 10, CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<IReadOnlyList<ImpactRankEntry>>(
+            [
+                new ImpactRankEntry("msedge.exe", 14, 3600 * 1.8, 3, 78),
+                new ImpactRankEntry("mysqld.exe", 6, 3600 * 2.4, 1, 61),
+                new ImpactRankEntry("devenv.exe", 4, 3600 * 0.6, 1, 42),
+                new ImpactRankEntry("svchost.exe", 3, 900, 0, 24),
+                new ImpactRankEntry("NetScope.Collector.exe", 1, 120, 0, 9),
+            ]);
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 

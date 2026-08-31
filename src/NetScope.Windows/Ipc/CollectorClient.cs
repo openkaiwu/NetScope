@@ -122,6 +122,46 @@ public sealed class CollectorClient : ICollectorClient
         catch { return []; }
     }
 
+    public async ValueTask<IReadOnlyList<PortUsageSummary>> QueryPortUsageAsync(int port, PortProtocol protocol, DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default)
+    {
+        var payload = await RequestAsync(CollectorProtocol.OpPortHistory,
+            CollectorProtocol.Serialize(new PortHistoryRequest(port, (int)protocol, from, to)), cancellationToken);
+        if (payload is null) return [];
+        try
+        {
+            var dtos = CollectorProtocol.Deserialize<PortUsageDto[]>(payload);
+            return dtos is null ? [] : dtos.Select(CollectorDtos.ToModel).ToList();
+        }
+        catch { return []; }
+    }
+
+    public async ValueTask<ProcessEventsSummary> QueryProcessEventsAsync(string processName, int days = 7, int limit = 10, CancellationToken cancellationToken = default)
+    {
+        var payload = await RequestAsync(CollectorProtocol.OpProcessEvents,
+            CollectorProtocol.Serialize(new ProcessEventsRequest(processName, Math.Clamp(days, 1, 30), Math.Clamp(limit, 1, 50))), cancellationToken);
+        if (payload is null) return new ProcessEventsSummary(0, []);
+        try
+        {
+            var dto = CollectorProtocol.Deserialize<ProcessEventsDto>(payload);
+            if (dto is null) return new ProcessEventsSummary(0, []);
+            return new ProcessEventsSummary(dto.TotalCount, dto.Events.Select(CollectorDtos.ToModel).ToList());
+        }
+        catch { return new ProcessEventsSummary(0, []); }
+    }
+
+    public async ValueTask<IReadOnlyList<ImpactRankEntry>> GetImpactRankingAsync(int days = 7, int limit = 10, CancellationToken cancellationToken = default)
+    {
+        var payload = await RequestAsync(CollectorProtocol.OpImpactRanking,
+            CollectorProtocol.Serialize(new ImpactRankingRequest(Math.Clamp(days, 1, 30), Math.Clamp(limit, 1, 50))), cancellationToken);
+        if (payload is null) return [];
+        try
+        {
+            var dtos = CollectorProtocol.Deserialize<ImpactRankDto[]>(payload);
+            return dtos is null ? [] : dtos.Select(CollectorDtos.ToModel).ToList();
+        }
+        catch { return []; }
+    }
+
     private async ValueTask<string?> RequestAsync(string op, string? payloadJson, CancellationToken cancellationToken)
     {
         using var client = new NamedPipeClientStream(".", _pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);

@@ -24,6 +24,8 @@ public sealed class CollectorHost : IAsyncDisposable
     private readonly IPerformanceEventEngine _eventEngine;
     private readonly ConditionalHistoryStore _historyStore;
     private readonly JsonSettingsStore _settingsStore;
+    private readonly PortSessionTracker _portSessions = new();
+    private readonly WindowsProcessMetadataResolver _processResolver = new();
     private readonly CancellationTokenSource _lifetime = new();
     private readonly object _eventLock = new();
     private readonly List<PerformanceEvent> _recentEvents = [];
@@ -50,7 +52,9 @@ public sealed class CollectorHost : IAsyncDisposable
             _historyStore,
             new ForegroundProcessProvider().GetForegroundProcessId,
             onEvent: AddRecentEvent,
-            performanceEnabled: () => _settings.BackgroundRecording);
+            performanceEnabled: () => _settings.BackgroundRecording,
+            portSessions: _portSessions,
+            processNameResolver: ResolveProcessName);
         _server = new CollectorIpcServer(HandleAsync, _logger);
     }
 
@@ -190,10 +194,86 @@ public sealed class CollectorHost : IAsyncDisposable
                 return CollectorProtocol.Serialize(new MarkLagDto(evt.StartedAt, true));
             }
 
+            case CollectorProtocol.OpPortHistory:
+            {
+                PortHistoryRequest? request = null;
+                if (payloadJson is not null)
+                {
+                    try { request = CollectorProtocol.Deserialize<PortHistoryRequest>(payloadJson); }
+                    catch { request = null; }
+                }
+                if (request is null) return "[]";
+                var usage = _historyStore.Inner.IsUsable
+                    ? await _historyStore.Inner.QueryPortUsageAsync(
+                        Math.Clamp(request.Port, 0, 65535), (PortProtocol)Math.Clamp(request.Protocol, 0, 1),
+                        request.From, request.To, 20, cancellationToken)
+                    : [];
+                return CollectorProtocol.Serialize(usage.Select(CollectorDtos.ToDto).ToArray());
+            }
+
+            case CollectorProtocol.OpProcessEvents:
+            {
+                ProcessEventsRequest? request = null;
+                if (payloadJson is not null)
+                {
+                    try { request = CollectorProtocol.Deserialize<ProcessEventsRequest>(payloadJson); }
+                    catch { request = null; }
+                }
+                if (request is null || string.IsNullOrWhiteSpace(request.ProcessName))
+                    return CollectorProtocol.Serialize(new ProcessEventsDto(0, []));
+
+                var from = DateTimeOffset.Now.AddDays(-Math.Clamp(request.Days, 1, 30));
+                var events = await QueryEventsAsync(1000, cancellationToken);
+                var matching = events
+                    .Where(e => MatchesProcess(e, request.ProcessName))
+                    .OrderByDescending(e => e.StartedAt)
+                    .ToList();
+                var limited = matching
+                    .Take(Math.Clamp(request.Limit, 1, 50))
+                    .Select(CollectorDtos.ToDto)
+                    .ToArray();
+                return CollectorProtocol.Serialize(new ProcessEventsDto(matching.Count, limited));
+            }
+
+            case CollectorProtocol.OpImpactRanking:
+            {
+                ImpactRankingRequest? request = null;
+                if (payloadJson is not null)
+                {
+                    try { request = CollectorProtocol.Deserialize<ImpactRankingRequest>(payloadJson); }
+                    catch { request = null; }
+                }
+                var days = Math.Clamp(request?.Days ?? 7, 1, 30);
+                var events = await QueryEventsAsync(1000, cancellationToken);
+                var ranking = ImpactRankingCalculator.Rank(events, days)
+                    .Take(Math.Clamp(request?.Limit ?? 10, 1, 50));
+                return CollectorProtocol.Serialize(ranking.Select(CollectorDtos.ToDto).ToArray());
+            }
+
             default:
                 throw new InvalidOperationException($"未知操作: {op}");
         }
     }
+
+    /// <summary>按 PID 解析进程名用于端口会话记录；解析失败返回 null，由追踪器回退到 PID 标识。</summary>
+    private string? ResolveProcessName(int processId)
+    {
+        try
+        {
+            var identity = _processResolver.ResolveAsync(processId).GetAwaiter().GetResult();
+            return identity is { IsAccessible: true } && !string.IsNullOrWhiteSpace(identity.Name)
+                ? identity.Name
+                : null;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private static bool MatchesProcess(PerformanceEvent evt, string processName) =>
+        string.Equals(evt.PrimaryProcessName, processName, StringComparison.OrdinalIgnoreCase) ||
+        evt.Contributors?.Any(c => string.Equals(c.ProcessName, processName, StringComparison.OrdinalIgnoreCase)) == true;
 
     /// <summary>优先从历史库查询事件；数据库不可用时回退内存事件列表，保证时间线始终可用。</summary>
     private async Task<IReadOnlyList<PerformanceEvent>> QueryEventsAsync(int limit, CancellationToken cancellationToken)
@@ -329,6 +409,12 @@ public sealed class CollectorHost : IAsyncDisposable
 
         public ValueTask AppendEventAsync(PerformanceEvent evt, CancellationToken cancellationToken = default) =>
             _isEnabled() ? Inner.AppendEventAsync(evt, cancellationToken) : ValueTask.CompletedTask;
+
+        public ValueTask AppendPortSessionAsync(PortSessionRecord session, CancellationToken cancellationToken = default) =>
+            _isEnabled() ? Inner.AppendPortSessionAsync(session, cancellationToken) : ValueTask.CompletedTask;
+
+        public ValueTask<IReadOnlyList<PortUsageSummary>> QueryPortUsageAsync(int port, PortProtocol protocol, DateTimeOffset from, DateTimeOffset to, int limit = 20, CancellationToken cancellationToken = default) =>
+            Inner.QueryPortUsageAsync(port, protocol, from, to, limit, cancellationToken);
 
         public ValueTask<IReadOnlyList<SystemPerformanceSample>> QuerySystemAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default) =>
             Inner.QuerySystemAsync(from, to, cancellationToken);
