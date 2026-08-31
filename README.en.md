@@ -61,7 +61,7 @@ V0.2 records and attributes performance events; it still does not include tracer
 - 7-day process events: the process detail pane lists how many performance events involved that process name in the past 7 days plus the latest records (aggregated by process name across PID instances).
 - 7-day impact ranking: the overview page shows "software most likely to slow down your PC in the past 7 days", aggregating event frequency (45%), cumulative duration (30%) and overlap with user lag marks (25%); it orders evidence and never asserts causation.
 
-See [Installation & usage guide](docs/安装与使用说明.md) for installation, icon and default-page details, the [development roadmap](docs/开发路线图.md) (Chinese) for product positioning, gap analysis and the version plan, and the [architecture guide](docs/架构说明.md) (Chinese) for how the current build is put together.
+Download the installer or portable build from [GitHub Releases](https://github.com/openkaiwu/NetScope/releases). See [Installation & usage guide](docs/安装与使用说明.md) for installation, icon and default-page details, the [development roadmap](docs/开发路线图.md) (Chinese) for product positioning, gap analysis and the version plan, and the [architecture guide](docs/架构说明.md) (Chinese) for how the current build is put together.
 
 ## Screenshots
 
