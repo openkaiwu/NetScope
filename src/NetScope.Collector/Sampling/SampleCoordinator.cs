@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Diagnostics;
 using NetScope.Core.Abstractions;
 using NetScope.Core.Models;
 using NetScope.Core.Services;
@@ -15,10 +16,18 @@ public sealed class SampleCoordinator : IAsyncDisposable
 {
     private const int SystemBufferCapacity = 60 * 60;       // 1 秒精度，1 小时
     private const int ProcessBufferCapacity = 60 * 60 * 8;  // 覆盖并发进程的采样
-    private const int HistoryProcessTopN = 25;              // 每轮落盘的影响分 Top 进程
-    private static readonly TimeSpan NormalInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan BurstInterval = TimeSpan.FromMilliseconds(500);
 
+    private readonly TcpConnectionTracker _connections = new();
+    private readonly Func<bool> _historyEnabled;
+    private readonly Func<int, ProcessIdentity?>? _connectionIdentity;
+    private readonly ICollectorSelfMonitor? _selfMonitor;
+    private readonly SelfImpactGuard _selfGuard;
+    private bool _wasHistoryEnabled;
+    private DateTimeOffset _lastConnectionWrite;
+    private DateTimeOffset? _lastMark;
+    private IReadOnlyList<TcpConnectionRecord> _currentConnections = [];
+    public IReadOnlyList<TcpConnectionRecord> Connections { get { lock (_stateLock) return _currentConnections; } }
     private readonly ISystemPerformanceProvider _systemProvider;
     private readonly IProcessPerformanceProvider _processProvider;
     private readonly INetworkSnapshotProvider _networkProvider;
@@ -44,6 +53,9 @@ public sealed class SampleCoordinator : IAsyncDisposable
     private bool _started;
     private DateTimeOffset _burstUntil = DateTimeOffset.MinValue;
     private DateTimeOffset _lastHistoryWrite = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastHealthWrite = DateTimeOffset.MinValue;
+    private CollectorHealthSnapshot? _currentHealth;
+    private SamplingProfile _samplingProfile = SelfImpactGuard.Profile(SamplingMode.Normal);
 
     public SampleCoordinator(
         ISystemPerformanceProvider systemProvider,
@@ -57,8 +69,15 @@ public sealed class SampleCoordinator : IAsyncDisposable
         Action<PerformanceEvent>? onEvent = null,
         Func<bool>? performanceEnabled = null,
         PortSessionTracker? portSessions = null,
-        Func<int, string?>? processNameResolver = null)
+        Func<int, string?>? processNameResolver = null, Func<bool>? historyEnabled = null,
+        Func<int, ProcessIdentity?>? connectionIdentity = null,
+        ICollectorSelfMonitor? selfMonitor = null,
+        SelfImpactGuard? selfImpactGuard = null)
     {
+        _historyEnabled = historyEnabled ?? (() => true);
+        _connectionIdentity = connectionIdentity;
+        _selfMonitor = selfMonitor;
+        _selfGuard = selfImpactGuard ?? new();
         _systemProvider = systemProvider;
         _processProvider = processProvider;
         _networkProvider = networkProvider;
@@ -80,7 +99,7 @@ public sealed class SampleCoordinator : IAsyncDisposable
     public void RequestBurst(TimeSpan duration) => _burstUntil = DateTimeOffset.Now + duration;
 
     /// <summary>登记用户标记时间，事件引擎据此提升邻近进程的贡献权重。</summary>
-    public void NoteUserMark(DateTimeOffset markedAt) => _eventEngine?.NoteUserMark(markedAt);
+    public void NoteUserMark(DateTimeOffset markedAt) { lock (_stateLock) _lastMark = markedAt; _eventEngine?.NoteUserMark(markedAt); }
 
     public void Start()
     {
@@ -104,11 +123,18 @@ public sealed class SampleCoordinator : IAsyncDisposable
         get { lock (_stateLock) return _lastPorts; }
     }
 
+    public CollectorHealthSnapshot? CurrentHealth
+    {
+        get { lock (_stateLock) return _currentHealth; }
+    }
+
     private async Task RunAsync(CancellationToken cancellationToken)
     {
-        var tick = 0;
+        var nextPortSample = DateTimeOffset.MinValue;
         while (!cancellationToken.IsCancellationRequested)
         {
+            var cycleStarted = Stopwatch.GetTimestamp();
+            var modeBefore = _samplingProfile.Mode;
             try
             {
                 var performanceOn = _performanceEnabled();
@@ -116,10 +142,33 @@ public sealed class SampleCoordinator : IAsyncDisposable
                 {
                     await SampleSystemAsync(cancellationToken);
                     await SampleProcessesAsync(cancellationToken);
+                    lock (_stateLock)
+                    {
+                        if (_currentSystem is { } current)
+                        {
+                            _currentSystem = current with { Responsiveness = ResponsivenessCalculator.Compute(current, _currentProcesses, _lastMark) };
+                            SystemBuffer.Add(_currentSystem);
+                        }
+                    }
                     await EvaluateEventsAsync(cancellationToken);
                     await WriteHistoryAsync(cancellationToken);
                 }
-                if (tick % 2 == 0) await SamplePortsAsync(cancellationToken);
+                else
+                {
+                    lock (_stateLock)
+                    {
+                        _previousSystem = null;
+                        _previousProcess.Clear();
+                        _latestProcessSamples.Clear();
+                        _currentProcesses = [];
+                        _currentSystem = null;
+                    }
+                }
+                if (DateTimeOffset.Now >= nextPortSample)
+                {
+                    nextPortSample = DateTimeOffset.Now.AddMilliseconds(_samplingProfile.PortIntervalMilliseconds);
+                    await SamplePortsAsync(cancellationToken);
+                }
             }
             catch (OperationCanceledException) { break; }
             catch (Exception ex)
@@ -128,8 +177,34 @@ public sealed class SampleCoordinator : IAsyncDisposable
                     await _logger.WriteAsync("ERROR", $"采样周期失败: {ex.Message}");
             }
 
-            tick++;
-            var interval = DateTimeOffset.Now < _burstUntil ? BurstInterval : NormalInterval;
+            try
+            {
+                if (_selfMonitor is not null)
+                {
+                    var usage = _selfMonitor.Read();
+                    var cycleMs = Stopwatch.GetElapsedTime(cycleStarted).TotalMilliseconds;
+                    _samplingProfile = _selfGuard.Evaluate(usage.CpuPercent, usage.WorkingSetBytes, usage.WriteBytesPerSecond, cycleMs);
+                    var health = new CollectorHealthSnapshot(usage.Timestamp, usage.CpuPercent, usage.WorkingSetBytes,
+                        usage.ReadBytesPerSecond, usage.WriteBytesPerSecond, cycleMs, _samplingProfile, _selfGuard.LastReasons);
+                    lock (_stateLock) _currentHealth = health;
+                    if (_historyStore is not null && _historyEnabled() &&
+                        (health.Timestamp - _lastHealthWrite >= TimeSpan.FromSeconds(30) || modeBefore != _samplingProfile.Mode))
+                    {
+                        await _historyStore.AppendCollectorHealthAsync(health, cancellationToken);
+                        _lastHealthWrite = health.Timestamp;
+                    }
+                    if (modeBefore != _samplingProfile.Mode && _logger is not null)
+                        await _logger.WriteAsync("WARN", $"Self Impact Guard: {modeBefore} -> {_samplingProfile.Mode}; {string.Join("; ", health.Reasons)}");
+                }
+            }
+            catch (OperationCanceledException) { break; }
+            catch (Exception ex)
+            {
+                if (_logger is not null) await _logger.WriteAsync("ERROR", $"Collector 自监控失败: {ex.Message}");
+            }
+
+            var interval = _samplingProfile.Mode == SamplingMode.Normal && DateTimeOffset.Now < _burstUntil
+                ? BurstInterval : TimeSpan.FromMilliseconds(_samplingProfile.PerformanceIntervalMilliseconds);
             try { await Task.Delay(interval, cancellationToken); }
             catch (OperationCanceledException) { break; }
         }
@@ -171,7 +246,6 @@ public sealed class SampleCoordinator : IAsyncDisposable
                         NetworkLinkUp = active?.IsUp ?? networkAvailable,
                         NetworkAdapterName = active?.Name ?? string.Empty
                     };
-                    SystemBuffer.Add(sample);
                     _currentSystem = sample;
                 }
             }
@@ -184,12 +258,12 @@ public sealed class SampleCoordinator : IAsyncDisposable
         var readings = await _processProvider.ReadAsync(cancellationToken);
         var foregroundPid = _foregroundPid?.Invoke();
 
-        var seen = new HashSet<int>(readings.Length);
+        var seen = new HashSet<ProcessInstanceKey>(readings.Length);
         lock (_stateLock)
         {
             foreach (var reading in readings)
             {
-                seen.Add(reading.Process.ProcessId);
+                seen.Add(reading.Process);
                 if (_previousProcess.TryGetValue(reading.Process, out var previous))
                 {
                     var elapsed = (reading.Timestamp - previous.Timestamp).TotalSeconds;
@@ -215,9 +289,9 @@ public sealed class SampleCoordinator : IAsyncDisposable
             }
 
             // 清理已退出进程的上一轮读数与最新采样（按 PID 已不在枚举中判断）
-            foreach (var key in _latestProcessSamples.Keys.Where(k => !seen.Contains(k.ProcessId)).ToList())
+            foreach (var key in _latestProcessSamples.Keys.Where(k => !seen.Contains(k)).ToList())
                 _latestProcessSamples.Remove(key);
-            foreach (var key in _previousProcess.Keys.Where(k => !seen.Contains(k.ProcessId)).ToList())
+            foreach (var key in _previousProcess.Keys.Where(k => !seen.Contains(k)).ToList())
                 _previousProcess.Remove(key);
 
             _currentProcesses = _latestProcessSamples.Values.ToImmutableArray();
@@ -267,7 +341,7 @@ public sealed class SampleCoordinator : IAsyncDisposable
         _lastHistoryWrite = now;
 
         await _historyStore.AppendSystemSampleAsync(system, cancellationToken);
-        foreach (var process in ImpactScoreCalculator.Rank(processes).Take(HistoryProcessTopN))
+        foreach (var process in ImpactScoreCalculator.Rank(processes).Take(_samplingProfile.ProcessHistoryTopN))
             await _historyStore.AppendProcessSampleAsync(process, cancellationToken);
     }
 
@@ -275,6 +349,29 @@ public sealed class SampleCoordinator : IAsyncDisposable
     {
         var ports = await _portProvider.CaptureAsync(cancellationToken);
         lock (_stateLock) _lastPorts = ports;
+
+        var now = DateTimeOffset.Now;
+        var enabled = _historyEnabled();
+        if (enabled != _wasHistoryEnabled)
+        {
+            _connections.Stop("历史记录设置改变，观察区间结束");
+            _portSessions?.CloseAll(now); // 丢弃跨开关边界的会话，避免把暂停时段计入历史时长。
+            _wasHistoryEnabled = enabled;
+        }
+        var identities = CurrentProcesses.GroupBy(p => p.Process.ProcessId).ToDictionary(g => g.Key, g => g.OrderByDescending(p => p.Process.StartedAt).First());
+        var changes = _connections.Feed(ports, now, pid => _connectionIdentity is not null ? _connectionIdentity(pid) : identities.TryGetValue(pid, out var p)
+            ? new ProcessIdentity(pid, p.Process.StartedAt, p.Name, null, p.IsAccessible, false)
+            : null);
+        lock (_stateLock) _currentConnections = _connections.Active;
+        if (enabled && _historyStore is not null)
+        {
+            foreach (var connection in changes) await _historyStore.AppendConnectionAsync(connection, cancellationToken);
+            if (now - _lastConnectionWrite >= TimeSpan.FromSeconds(30))
+            {
+                foreach (var connection in _connections.Active) await _historyStore.AppendConnectionAsync(connection, cancellationToken);
+                _lastConnectionWrite = now;
+            }
+        }
 
         // 端口占用会话：对快照差分，结束的会话写入历史（受 HistoryEnabled 门控）
         if (_portSessions is not null)
@@ -307,6 +404,11 @@ public sealed class SampleCoordinator : IAsyncDisposable
             }
             catch (Exception) { }
         }
+        if (_historyStore is not null)
+            foreach (var connection in _connections.Stop("采集器退出，后续状态未知"))
+                await _historyStore.AppendConnectionAsync(connection);
+        (_systemProvider as IDisposable)?.Dispose();
+        (_selfMonitor as IDisposable)?.Dispose();
         _lifetime.Dispose();
     }
 }

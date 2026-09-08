@@ -91,7 +91,7 @@ internal static class Program
         bitmap.Render(window);
         var encoder = new PngBitmapEncoder();
         encoder.Frames.Add(BitmapFrame.Create(bitmap));
-        using (var stream = File.Create(Path.Combine(output, "netscope-default-port-v030.png")))
+        using (var stream = File.Create(Path.Combine(output, "netscope-default-port-v060.png")))
             encoder.Save(stream);
 
         window.Close();
@@ -104,20 +104,37 @@ internal static class Program
         var performance = new PerformanceViewModel(new SampleCollectorClient(), new AppSettings());
         PopulatePerformance(performance);
 
-        Render(performance, 1140, 720, Path.Combine(output, "netscope-performance-v030.png"));
+        Render(performance, 1140, 720, Path.Combine(output, "netscope-performance-v060.png"));
 
         performance.IsOverviewSelected = false;
         performance.IsEventsSelected = true;
         performance.SelectedEvent = performance.RecentEvents.FirstOrDefault();
-        Render(performance, 1140, 720, Path.Combine(output, "netscope-performance-events-v030.png"));
+        Render(performance, 1140, 720, Path.Combine(output, "netscope-performance-events-v060.png"));
 
         performance.IsEventsSelected = false;
         performance.IsProcessesSelected = true;
         // 选 svchost：知识库命中 + 7 天事件在同步路径完成，保证截图前数据已就位
         performance.SelectedProcess = performance.TopProcesses.FirstOrDefault(x => x.Name == "svchost.exe")
                                       ?? performance.TopProcesses.FirstOrDefault();
-        Render(performance, 1140, 720, Path.Combine(output, "netscope-performance-processes-v030.png"));
+        Render(performance, 1140, 720, Path.Combine(output, "netscope-performance-processes-v060.png"));
 
+        performance.ShowOverviewCommand.Execute(null);
+        Render(performance, 860, 580, Path.Combine(output, "netscope-performance-compact-v060.png"));
+        performance.IsOverviewSelected = false;
+        performance.IsInsightsSelected = true;
+        Render(performance, 1140, 720, Path.Combine(output, "netscope-insights-v060.png"));
+        Render(performance, 860, 580, Path.Combine(output, "netscope-insights-compact-v060.png"));
+        performance.IsInsightsSelected = false;
+        performance.ShowConnectionsCommand.Execute(null);
+        var now = DateTimeOffset.Now;
+        performance.Connections.Add(new(new TcpConnectionRecord(Guid.NewGuid(), 28440, now.AddHours(-1), "msedge.exe", IpAddressFamily.IPv4,
+            "192.0.2.10", 51432, "203.0.113.20", 443, "Established", now.AddMinutes(-2), now)));
+        performance.Connections.Add(new(new TcpConnectionRecord(Guid.NewGuid(), 9460, now.AddHours(-1), "mysqld.exe", IpAddressFamily.IPv6,
+            "::1", 3306, "::1", 53120, "CloseWait", now.AddMinutes(-3), now.AddMinutes(-1), now.AddMinutes(-1), "后续快照中消失")));
+        performance.ConnectionStatus = "过去 7 天，示例数据：当前连接与历史连接";
+        Render(performance, 1140, 720, Path.Combine(output, "netscope-connections-v060.png"));
+        performance.ConnectionGroup = "进程";
+        Render(performance, 860, 580, Path.Combine(output, "netscope-connections-compact-v060.png"));
         performance.Dispose();
     }
 
@@ -126,7 +143,11 @@ internal static class Program
         var now = DateTimeOffset.Now;
         vm.CollectorConnected = true;
         vm.CollectorStatus = "后台记录运行中";
+        vm.CollectorHealthText = "自监控：Normal · CPU 0.18% · 内存 43.2 MB";
+        vm.CollectorHealthDetail = "读 2.1 KB/s；写 1.0 KB/s；周期耗时 18 ms；当前未触发自动降频";
         vm.LastUpdateText = $"更新于 {now:HH:mm:ss}";
+        vm.ResponsivenessText = "响应性 88/100 · 较流畅";
+        vm.DiskText = "磁盘合计 · 读 2.3 ms / 写 4.1 ms · 队列 0.20 · 活跃 24%";
         vm.CpuPercent = 37;
         vm.CpuText = "37%";
         vm.MemoryText = "12.6 GB / 31.9 GB";
@@ -189,6 +210,21 @@ internal static class Program
             new[] { "您于此刻点击「刚才卡了」", "已自动进入 500ms 高频采样" },
             new[] { "30–60 秒后查看归因结果与关联进程" },
             null, null, Array.Empty<PerformanceEventContributor>())));
+
+        vm.Insights.Add(new(new InsightItem(Guid.NewGuid(), InsightKind.LagSummary,
+            "30 天内标记卡顿 7 次", "其中 5 次包含 msedge.exe 的相关证据", 85,
+            now.AddDays(-30), now, "msedge.exe",
+            ["统计窗口为最近 30 天", "用户标记事件 7 条", "关联表示资源证据重合，不代表确定因果"],
+            Enumerable.Range(0, 7).Select(_ => Guid.NewGuid()).ToArray())));
+        vm.Insights.Add(new(new InsightItem(Guid.NewGuid(), InsightKind.MemoryGrowth,
+            "cloudsync.exe 内存呈持续增长趋势", "观察期内私有内存约增加 486 MB，可能存在泄漏或持续缓存", 88,
+            now.AddHours(-8), now, "cloudsync.exe",
+            ["线性趋势 1.0 MB/分钟，拟合度 R²=0.91", "非下降采样占比 82%，样本 96 条", "趋势不能单独证明内存泄漏"], [])));
+        vm.Insights.Add(new(new InsightItem(Guid.NewGuid(), InsightKind.PeriodicActivity,
+            "updater.exe 出现周期性后台活动", "检测到 9 次活动，平均约每 20 分钟一次", 82,
+            now.AddHours(-3), now, "updater.exe",
+            ["周期离散系数 0.08（越低越规律）", "活动阈值 CPU 8.1% 或 I/O 1.0 MB/s"], [])));
+        vm.InsightStatus = "基于最近 30 天本地历史生成 3 条；结论可回查，不代表确定因果";
     }
 
     private static ProcessPerformanceSample SampleProc(ProcessInstanceKey key, string name, double cpu, long ws, long readBps, long writeBps, bool foreground)

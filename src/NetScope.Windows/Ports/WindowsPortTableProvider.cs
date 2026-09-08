@@ -30,11 +30,14 @@ public sealed class WindowsPortTableProvider : IPortTableProvider
     {
         var size = 0;
         var result = GetExtendedTcpTable(IntPtr.Zero, ref size, true, family, tableClass, 0);
-        if (result != ErrorInsufficientBuffer || size <= sizeof(uint)) return;
+        if (result == 0 && size <= sizeof(uint)) return;
+        if (result != ErrorInsufficientBuffer || size < sizeof(uint))
+            throw new System.ComponentModel.Win32Exception((int)result, "无法读取完整 TCP 快照");
         var buffer = Marshal.AllocHGlobal(size);
         try
         {
-            if (GetExtendedTcpTable(buffer, ref size, true, family, tableClass, 0) != 0) return;
+            result = GetExtendedTcpTable(buffer, ref size, true, family, tableClass, 0);
+            if (result != 0) throw new System.ComponentModel.Win32Exception((int)result, "TCP 快照变化或读取失败，跳过本轮");
             var count = Marshal.ReadInt32(buffer);
             var rowSize = Marshal.SizeOf<TRow>();
             var pointer = IntPtr.Add(buffer, sizeof(uint));
@@ -64,11 +67,13 @@ public sealed class WindowsPortTableProvider : IPortTableProvider
 
     private static void AddTcp4(ImmutableArray<PortBindingSnapshot>.Builder rows, MibTcpRowOwnerPid row, DateTimeOffset now) =>
         rows.Add(Create(PortProtocol.Tcp, IpAddressFamily.IPv4, new IPAddress(row.LocalAddr).ToString(),
-            DecodePort(row.LocalPort), unchecked((int)row.OwningPid), TcpState(row.State), now));
+            DecodePort(row.LocalPort), unchecked((int)row.OwningPid), TcpState(row.State), now) with
+            { RemoteAddress = new IPAddress(row.RemoteAddr).ToString(), RemotePort = DecodePort(row.RemotePort) });
 
     private static void AddTcp6(ImmutableArray<PortBindingSnapshot>.Builder rows, MibTcp6RowOwnerPid row, DateTimeOffset now) =>
         rows.Add(Create(PortProtocol.Tcp, IpAddressFamily.IPv6, new IPAddress(row.LocalAddr, row.LocalScopeId).ToString(),
-            DecodePort(row.LocalPort), unchecked((int)row.OwningPid), TcpState(row.State), now));
+            DecodePort(row.LocalPort), unchecked((int)row.OwningPid), TcpState(row.State), now) with
+            { RemoteAddress = new IPAddress(row.RemoteAddr, row.RemoteScopeId).ToString(), RemotePort = DecodePort(row.RemotePort) });
 
     private static void AddUdp4(ImmutableArray<PortBindingSnapshot>.Builder rows, MibUdpRowOwnerPid row, DateTimeOffset now) =>
         rows.Add(Create(PortProtocol.Udp, IpAddressFamily.IPv4, new IPAddress(row.LocalAddr).ToString(),

@@ -1,5 +1,7 @@
 #define MyAppName "NetScope"
-#define MyAppVersion "0.3.0"
+#ifndef MyAppVersion
+#define MyAppVersion "0.6.0"
+#endif
 #define MyAppPublisher "NetScope contributors"
 #define MyAppExeName "NetScope.exe"
 

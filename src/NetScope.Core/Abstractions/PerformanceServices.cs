@@ -15,6 +15,11 @@ public interface ISystemPerformanceProvider
     ValueTask<SystemPerformanceReading> ReadAsync(CancellationToken cancellationToken = default);
 }
 
+public interface ICollectorSelfMonitor
+{
+    CollectorUsageReading Read();
+}
+
 /// <summary>性能历史存储契约（V0.2 阶段 C 由 SQLite 实现；App 与 Collector 只依赖本接口）。</summary>
 public interface IPerformanceHistoryStore : IAsyncDisposable
 {
@@ -22,10 +27,16 @@ public interface IPerformanceHistoryStore : IAsyncDisposable
     ValueTask AppendSystemSampleAsync(SystemPerformanceSample sample, CancellationToken cancellationToken = default);
     ValueTask AppendProcessSampleAsync(ProcessPerformanceSample sample, CancellationToken cancellationToken = default);
     ValueTask AppendEventAsync(PerformanceEvent evt, CancellationToken cancellationToken = default);
+    ValueTask AppendCollectorHealthAsync(CollectorHealthSnapshot sample, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+    ValueTask<IReadOnlyList<CollectorHealthSnapshot>> QueryCollectorHealthAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default) => ValueTask.FromResult<IReadOnlyList<CollectorHealthSnapshot>>([]);
+    ValueTask<IReadOnlyList<ProcessHistoryPoint>> QueryProcessSeriesAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default) => ValueTask.FromResult<IReadOnlyList<ProcessHistoryPoint>>([]);
+    ValueTask<IReadOnlyList<PortActivitySummary>> QueryPortActivityAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default) => ValueTask.FromResult<IReadOnlyList<PortActivitySummary>>([]);
     ValueTask<IReadOnlyList<SystemPerformanceSample>> QuerySystemAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default);
     ValueTask<IReadOnlyList<ProcessPerformanceSample>> QueryProcessAsync(ProcessInstanceKey process, DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default);
     ValueTask<IReadOnlyList<PerformanceEvent>> QueryEventsAsync(DateTimeOffset from, DateTimeOffset to, int limit = 200, CancellationToken cancellationToken = default);
     /// <summary>记录一条已结束的端口占用会话。</summary>
+    ValueTask AppendConnectionAsync(TcpConnectionRecord connection, CancellationToken cancellationToken = default);
+    ValueTask<IReadOnlyList<TcpConnectionRecord>> QueryConnectionsAsync(ConnectionQuery query, CancellationToken cancellationToken = default);
     ValueTask AppendPortSessionAsync(PortSessionRecord session, CancellationToken cancellationToken = default);
     /// <summary>查询某端口在时间窗内的占用聚合（按端口+协议+进程名分组，按时长降序）。</summary>
     ValueTask<IReadOnlyList<PortUsageSummary>> QueryPortUsageAsync(int port, PortProtocol protocol, DateTimeOffset from, DateTimeOffset to, int limit = 20, CancellationToken cancellationToken = default);
@@ -55,6 +66,9 @@ public interface IUserMarkerService
 /// <summary>Collector IPC 客户端（App 使用）。连接失败时返回空结果，由调用方决定降级。</summary>
 public interface ICollectorClient : IAsyncDisposable
 {
+    ValueTask<CollectorHealthSnapshot?> GetCollectorHealthAsync(CancellationToken cancellationToken = default) => ValueTask.FromResult<CollectorHealthSnapshot?>(null);
+    ValueTask<IReadOnlyList<InsightItem>> GetInsightsAsync(InsightQuery query, CancellationToken cancellationToken = default) => ValueTask.FromResult<IReadOnlyList<InsightItem>>([]);
+    ValueTask<IReadOnlyList<TcpConnectionRecord>> QueryConnectionsAsync(ConnectionQuery query, CancellationToken cancellationToken = default) => ValueTask.FromResult<IReadOnlyList<TcpConnectionRecord>>([]);
     ValueTask<bool> IsAvailableAsync(CancellationToken cancellationToken = default);
     ValueTask<ImmutableArray<PortBindingSnapshot>> GetPortSnapshotAsync(CancellationToken cancellationToken = default);
     ValueTask<SystemPerformanceSample?> GetSystemSampleAsync(CancellationToken cancellationToken = default);

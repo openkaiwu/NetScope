@@ -4,7 +4,7 @@
 
 NetScope 是一款面向 Windows 10/11 的轻量端口管理与可视化网络诊断工具。界面使用中文，保留 PID、TCP、UDP、DNS、DHCP、TLS 等标准技术术语；核心操作保持只读。
 
-![NetScope 主界面（默认端口工作台）](design/qa/netscope-default-port-v030.png)
+![NetScope 主界面（默认端口工作台）](design/qa/netscope-default-port-v060.png)
 
 ## 功能总览
 
@@ -29,9 +29,9 @@ NetScope 是一款面向 Windows 10/11 的轻量端口管理与可视化网络�
 - 真实测速使用 Cloudflare 边缘测速端点，单次流量上限约 62MB，支持进度、总超时和随时取消；NetScope 不上传或持久化测速结果。
 - ICMP 失败不会单独判定断网；互联网结论结合 DNS、TCP 443、TLS、NCSI 与多目标证据。
 
-### 性能记录与归因（V0.2）
+### 性能记录、归因与洞察（V0.6）
 
-- 独立“性能”工作区位于“端口”与“诊断”之间，提供总览、事件时间线、进程中心三个子页，详见“V0.2 新增功能”。
+- 独立“性能”工作区提供总览、事件时间线、进程中心、Insights 与 TCP 连接五个子页，覆盖实时状态、历史证据和长期行为分析。
 
 ### 界面与运行
 
@@ -63,15 +63,36 @@ V0.2 记录并归因性能事件，仍不包含路由追踪、MTU 与逐进程�
 
 安装包与便携版在 [GitHub Releases](https://github.com/openkaiwu/NetScope/releases) 下载；安装、图标和默认页面说明见 [安装与使用说明](docs/安装与使用说明.md)；产品定位、差距分析与后续版本规划见 [开发路线图](docs/开发路线图.md)；当前实际架构见 [架构说明](docs/架构说明.md)。
 
+## V0.4 新增功能：分析深化（本地开发版）
+
+- **相对 CPU 异常检测**：按 PID + 启动时间维护 EWMA 与中位数/MAD 基线，学习至少 30 秒；相对突增持续 5 秒后进入事件时间线，带冷却。首次启动和重启后重新学习；当前不包含内存泄漏或逐进程网络异常模型。
+- **响应性评分 0–100**：性能概览展示资源压力估计，综合 CPU、内存、磁盘、前台进程与最近卡顿标记；悬停查看扣分证据。它不是实测输入延迟，缺失磁盘指标时会明确标注证据不完整。
+- **TCP 连接与历史**：性能页新增 TCP 连接子页，显示 IPv4/IPv6 的进程、PID、本地/远端 IP 和端口、最后状态及首次/最后/结束观察时间；支持搜索与按进程、远端 IP、远端端口分组。默认显示最近 7 天最多 300 条，历史随设置保留，关闭历史不新增磁盘记录。
+- **磁盘压力增强**：PDH 采集物理磁盘合计读写延迟、平均队列及活跃百分比；延迟 ≥50ms 或活跃 ≥90% 且队列 ≥2 持续 10 秒也可触发疑似磁盘事件，无需高吞吐。不可用时保留原有吞吐规则并说明证据缺失。
+- 旧版 SQLite 数据库采用增量升级，保留 V0.3 数据；新指标和响应性证据随系统历史存储。
+
+连接时间是轮询观察边界，不是精确握手/断开时间，短连接可能漏记；采集器退出或重启标注“后续状态未知”。详情和验收记录见 [V0.4 实现说明](docs/V0.4实现说明.md)。GitHub 已发布版本仍以 Releases 页面为准。
+
+## V0.5–V0.6 新增功能：自监控、长期行为与 Insights（本地开发版）
+
+- **Collector 自监控与保护**：性能页持续显示 Collector 自身 CPU、工作集、磁盘读写与单次采样耗时。连续超预算后按 Normal → Reduced → Minimal 分级降低采样频率，恢复时使用滞回逐级升频；模式变化同时写入脱敏日志和本地健康历史。
+- **长列表保护**：进程、事件、连接和 Insights 列表启用回收式虚拟化；进程文件元数据与签名仍在用户选中后异步读取并命中缓存。
+- **内存增长趋势**：按“PID + 启动时间”隔离进程实例，以观察窗口、总增长、线性斜率、拟合度和非下降比例共同判断，避免把进程重启前后拼成一次泄漏；结论明确保留缓存增长等其他解释。
+- **周期行为发现**：从 CPU/I/O 动态基线提取活动段，使用周期均值与离散系数识别更新、同步、索引等规律后台行为；持续高负载和不规则突发不会被标为周期任务。
+- **Insights 页面**：汇总 7/14/30 天卡顿标记、重复事件、内存趋势、周期行为、端口会话与连接变化，支持进程名、时间范围和类型筛选；“查看原始证据”可跳转到事件、进程曲线或连接记录。
+- **安全依赖更新**：SQLite 原生运行库固定到 `SQLitePCLRaw.lib.e_sqlite3 2.1.13`，替换带高严重性安全公告的 2.1.10。
+
+实现与验收边界见 [V0.5–V0.6 实现说明](docs/V0.5-V0.6实现说明.md)。当前代码版本为 0.6.0，本次尚未创建 GitHub Release。
+
 ## 界面截图
 
 <p align="center">
-  <img src="design/qa/netscope-performance-v030.png" width="49%" alt="性能总览"/>
-  <img src="design/qa/netscope-performance-events-v030.png" width="49%" alt="事件时间线"/>
+  <img src="design/qa/netscope-performance-v060.png" width="49%" alt="性能总览"/>
+  <img src="design/qa/netscope-insights-v060.png" width="49%" alt="可回查洞察"/>
 </p>
 <p align="center">
-  <img src="design/qa/netscope-performance-processes-v030.png" width="49%" alt="进程中心"/>
-  <img src="design/qa/netscope-default-port-v030.png" width="49%" alt="端口工作台"/>
+  <img src="design/qa/netscope-performance-processes-v060.png" width="49%" alt="进程中心"/>
+  <img src="design/qa/netscope-default-port-v060.png" width="49%" alt="端口工作台"/>
 </p>
 
 ## 工程结构

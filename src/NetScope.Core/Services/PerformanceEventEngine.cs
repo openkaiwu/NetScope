@@ -39,6 +39,7 @@ public sealed class PerformanceEventEngine : IPerformanceEventEngine
     private readonly PerformanceEventEngineOptions _options;
     private readonly Dictionary<PerformanceEventType, RuleState> _states;
     private DateTimeOffset? _lastUserMarkAt;
+    private readonly RelativeAnomalyDetector _relative = new();
 
     public PerformanceEventEngine(PerformanceEventEngineOptions? options = null)
     {
@@ -69,6 +70,7 @@ public sealed class PerformanceEventEngine : IPerformanceEventEngine
         EvaluateMemory(system, accessible, now, output);
         EvaluateIo(system, accessible, now, output);
         EvaluateNetwork(system, now, output);
+        output.AddRange(_relative.Evaluate(accessible, now));
 
         return ValueTask.FromResult<IReadOnlyList<PerformanceEvent>>(output);
     }
@@ -149,7 +151,10 @@ public sealed class PerformanceEventEngine : IPerformanceEventEngine
     {
         var state = _states[PerformanceEventType.DiskIoPressure];
         var totalIoMBs = processes.Sum(p => p.ReadBytesPerSecond + p.WriteBytesPerSecond) / 1024.0 / 1024;
-        var condition = totalIoMBs >= _options.TotalIoMBPerSecondThreshold;
+        var diskPressure = system.Disk is { } disk &&
+            (Math.Max(disk.ReadLatencyMs, disk.WriteLatencyMs) >= 50 ||
+             (disk.ActivePercent >= 90 && disk.QueueLength >= 2));
+        var condition = diskPressure || totalIoMBs >= _options.TotalIoMBPerSecondThreshold;
 
         if (condition)
         {
@@ -161,12 +166,13 @@ public sealed class PerformanceEventEngine : IPerformanceEventEngine
             state.LatestPrimary = top.FirstOrDefault();
             state.LatestContributors = BuildContributors(state);
             state.LatestCause = top.Count > 0
-                ? $"全机进程读写持续偏高（{totalIoMBs:0} MB/s），可能与 {top[0].Name} 的 I/O 活动有关"
-                : $"全机进程读写持续偏高（{totalIoMBs:0} MB/s）";
+                ? $"磁盘或 I/O 持续承压，可能与 {top[0].Name} 的 I/O 活动有关（相关性证据）"
+                : "磁盘或 I/O 持续承压，暂无可归属的进程证据";
 
             IReadOnlyList<string> BuildEvidence() =>
             [
-                $"全机进程读写合计 {totalIoMBs:0} MB/s，超过 {_options.TotalIoMBPerSecondThreshold:0} MB/s 阈值（期间峰值 {state.PeakMetric:0} MB/s）",
+                $"全机进程读写合计 {totalIoMBs:0} MB/s（吞吐阈值 {_options.TotalIoMBPerSecondThreshold:0} MB/s，期间峰值 {state.PeakMetric:0} MB/s）",
+                system.Disk is { } d ? $"物理磁盘合计：读延迟 {d.ReadLatencyMs:0.0} ms，写延迟 {d.WriteLatencyMs:0.0} ms，平均队列 {d.QueueLength:0.00}，活跃 {d.ActivePercent:0}%" : "磁盘延迟/队列未采集，仅以进程 I/O 吞吐提供低置信度证据",
                 ..TopLine(top.Take(_options.MaxContributors).Where(p => p.ReadBytesPerSecond + p.WriteBytesPerSecond > 0), p => $"{p.Name} {(p.ReadBytesPerSecond + p.WriteBytesPerSecond) / 1024.0 / 1024:0} MB/s")
             ];
         }
@@ -176,7 +182,7 @@ public sealed class PerformanceEventEngine : IPerformanceEventEngine
                 ["在进程中心查看 I/O 读写最高的进程",
                  "进程 I/O 计数包含文件、网络与设备读写，不等同于磁盘延迟；结论需结合磁盘负载判断",
                  "若伴随卡顿，可在“刚才卡了”后回看该时段证据"]),
-            (active, seconds) => Close(active, now, seconds, $"全机进程读写合计连续 {seconds} 秒高于 {_options.TotalIoMBPerSecondThreshold:0} MB/s（峰值 {state.PeakMetric:0} MB/s）"));
+            (active, seconds) => Close(active, now, seconds, $"磁盘或 I/O 压力条件连续满足 {seconds} 秒（进程吞吐峰值 {state.PeakMetric:0} MB/s）"));
     }
 
     private void EvaluateNetwork(SystemPerformanceSample system, DateTimeOffset now, List<PerformanceEvent> output)
@@ -252,6 +258,9 @@ public sealed class PerformanceEventEngine : IPerformanceEventEngine
         {
             if (state.ActiveEvent is { } active)
             {
+                active = active with { Evidence = state.LatestEvidence, MostLikelyCause = state.LatestCause,
+                    Contributors = state.LatestContributors, Confidence = state.LatestConfidence,
+                    PrimaryProcess = state.LatestPrimary?.Process, PrimaryProcessName = state.LatestPrimary?.Name };
                 var seconds = (int)Math.Max(1, (now - state.ConditionSince!.Value).TotalSeconds);
                 output.Add(closeEvent(active, seconds));
                 state.ActiveEvent = null;
@@ -259,6 +268,7 @@ public sealed class PerformanceEventEngine : IPerformanceEventEngine
                 Reset(state);
             }
             state.ConditionSince = null;
+            Reset(state);
         }
     }
 

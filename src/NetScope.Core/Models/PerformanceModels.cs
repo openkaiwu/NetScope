@@ -48,7 +48,8 @@ public sealed record SystemPerformanceReading(
     ulong AvailableMemoryBytes,
     ulong TotalMemoryBytes,
     long NetworkReceivedBytes,
-    long NetworkSentBytes);
+    long NetworkSentBytes,
+    DiskPerformanceSample? Disk = null);
 
 /// <summary>系统采样：CPU 百分比、可用/总内存、每秒网络收发字节。NetworkLinkUp 来自网卡被动状态，供网络退化规则使用。</summary>
 public sealed record SystemPerformanceSample(
@@ -59,7 +60,15 @@ public sealed record SystemPerformanceSample(
     long NetworkReceivedBytesPerSecond,
     long NetworkSentBytesPerSecond,
     bool NetworkLinkUp = true,
-    string NetworkAdapterName = "");
+    string NetworkAdapterName = "",
+    DiskPerformanceSample? Disk = null,
+    ResponsivenessAssessment? Responsiveness = null);
+
+/// <summary>PDH 物理磁盘指标；null 表示不可用或尚未完成两次采样。</summary>
+public sealed record DiskPerformanceSample(double ReadLatencyMs, double WriteLatencyMs, double QueueLength, double ActivePercent);
+
+/// <summary>基于资源压力的启发式评分，不是实际 UI 输入延迟测量。</summary>
+public sealed record ResponsivenessAssessment(int Score, string Label, IReadOnlyList<string> Evidence);
 
 public enum PerformanceEventType
 {
@@ -67,7 +76,8 @@ public enum PerformanceEventType
     MemoryPressure,
     DiskIoPressure,
     NetworkDegradation,
-    UserMarkedLag
+    UserMarkedLag,
+    RelativeCpuAnomaly
 }
 
 public enum PerformanceEventStatus

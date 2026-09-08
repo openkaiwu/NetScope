@@ -7,13 +7,16 @@ namespace NetScope.Windows.Ipc;
 /// <summary>Collector 与 App 之间命名管道协议：常量、线上 DTO 与 Core 模型映射。</summary>
 public static class CollectorProtocol
 {
-    public const string PipeName = "NetScope.Collector.v2";
-    public const string LocalMutexName = @"Local\NetScope.Collector.v2";
-    public const int ProtocolVersion = 1;
-    public const string ServerVersion = "0.3.0";
+    public const string PipeName = "NetScope.Collector.v3";
+    public const string LocalMutexName = @"Local\NetScope.Collector.v3";
+    public const int ProtocolVersion = 2;
+    public const string ServerVersion = "0.6.0";
     public const int MaxMessageBytes = 2 * 1024 * 1024;
 
     public const string OpHello = "hello";
+    public const string OpConnections = "connections";
+    public const string OpHealth = "health";
+    public const string OpInsights = "insights";
     public const string OpPing = "ping";
     public const string OpPorts = "ports";
     public const string OpSystem = "system";
@@ -54,7 +57,8 @@ public sealed record SystemSampleDto(
     long NetworkReceivedBytesPerSecond,
     long NetworkSentBytesPerSecond,
     bool NetworkLinkUp = true,
-    string NetworkAdapterName = "");
+    string NetworkAdapterName = "",
+    DiskPerformanceSample? Disk = null, ResponsivenessAssessment? Responsiveness = null);
 
 public sealed record ProcessSampleDto(
     int ProcessId,
@@ -130,12 +134,12 @@ public static class CollectorDtos
     public static SystemSampleDto ToDto(SystemPerformanceSample sample) =>
         new(sample.Timestamp, sample.CpuPercent, sample.AvailableMemoryBytes, sample.TotalMemoryBytes,
             sample.NetworkReceivedBytesPerSecond, sample.NetworkSentBytesPerSecond,
-            sample.NetworkLinkUp, sample.NetworkAdapterName);
+            sample.NetworkLinkUp, sample.NetworkAdapterName, sample.Disk, sample.Responsiveness);
 
     public static SystemPerformanceSample ToModel(SystemSampleDto dto) =>
         new(dto.Timestamp, dto.CpuPercent, dto.AvailableMemoryBytes, dto.TotalMemoryBytes,
             dto.NetworkReceivedBytesPerSecond, dto.NetworkSentBytesPerSecond,
-            dto.NetworkLinkUp, dto.NetworkAdapterName);
+            dto.NetworkLinkUp, dto.NetworkAdapterName, dto.Disk, dto.Responsiveness);
 
     public static ProcessSampleDto ToDto(ProcessPerformanceSample sample) =>
         new(sample.Process.ProcessId, sample.Process.StartedAt, sample.Timestamp, sample.Name, sample.CpuPercent,

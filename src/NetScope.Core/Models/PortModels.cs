@@ -35,7 +35,9 @@ public sealed record PortBindingSnapshot(
     PortBindingKey Key,
     DateTimeOffset ObservedAt,
     ProcessIdentity? Process = null,
-    PortCatalogEntry? CatalogEntry = null)
+    PortCatalogEntry? CatalogEntry = null,
+    string? RemoteAddress = null,
+    int RemotePort = 0)
 {
     public PortProtocol Protocol => Key.Protocol;
     public IpAddressFamily AddressFamily => Key.AddressFamily;

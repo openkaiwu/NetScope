@@ -70,4 +70,27 @@ public sealed class CollectorProtocolTests
         Assert.True(restored.Ok);
         Assert.Equal("pong", restored.Json);
     }
+
+    [Fact]
+    public void V06HealthAndInsightsRoundTripWithoutLosingEvidence()
+    {
+        Assert.Equal(2, CollectorProtocol.ProtocolVersion);
+        Assert.Equal("0.6.0", CollectorProtocol.ServerVersion);
+        Assert.Contains("v3", CollectorProtocol.PipeName, StringComparison.Ordinal);
+
+        var at = DateTimeOffset.Parse("2026-08-31T12:00:00+08:00");
+        var health = new CollectorHealthSnapshot(at, 0.25, 40_000_000, 100, 200, 15,
+            new(SamplingMode.Normal, 1000, 2000, 25), ["证据"]);
+        var restoredHealth = CollectorProtocol.Deserialize<CollectorHealthSnapshot>(CollectorProtocol.Serialize(health));
+        Assert.NotNull(restoredHealth);
+        Assert.Equal("证据", Assert.Single(restoredHealth.Reasons));
+
+        var sourceId = Guid.NewGuid();
+        var insight = new InsightItem(Guid.NewGuid(), InsightKind.LagSummary, "标题", "摘要", 85,
+            at.AddDays(-1), at, "app.exe", ["证据一", "证据二"], [sourceId]);
+        var restored = Assert.Single(CollectorProtocol.Deserialize<InsightItem[]>(CollectorProtocol.Serialize(new[] { insight }))!);
+        Assert.Equal(InsightKind.LagSummary, restored.Kind);
+        Assert.Equal(2, restored.Evidence.Count);
+        Assert.Equal(sourceId, Assert.Single(restored.SourceEventIds));
+    }
 }

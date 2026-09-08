@@ -7,7 +7,7 @@ namespace NetScope.Tests;
 
 /// <summary>
 /// IPC 往返测试。每个测试类实例使用独立随机管道名，避免与真实 Collector、
-/// 其他测试类或并行运行残留实例共享 "NetScope.Collector.v2" 造成串扰。
+/// 其他测试类或并行运行残留实例共享正式管道造成串扰。
 /// </summary>
 public sealed class CollectorIpcRoundTripTests : IAsyncLifetime
 {
@@ -31,6 +31,13 @@ public sealed class CollectorIpcRoundTripTests : IAsyncLifetime
             CollectorProtocol.OpProcesses => CollectorProtocol.Serialize(
                 new ProcessSampleDto[] { new(777, DateTimeOffset.UnixEpoch, DateTimeOffset.Now, "svc", 5, 1000, 800, 10, 20, 1, 2, true, null) }),
             CollectorProtocol.OpMarkLag => CollectorProtocol.Serialize(new MarkLagDto(DateTimeOffset.Now, true)),
+            CollectorProtocol.OpHealth => CollectorProtocol.Serialize(new CollectorHealthSnapshot(DateTimeOffset.Now,
+                0.2, 40_000_000, 100, 200, 12, new(SamplingMode.Normal, 1000, 2000, 25), [])),
+            CollectorProtocol.OpInsights => CollectorProtocol.Serialize(new[]
+            {
+                new InsightItem(Guid.NewGuid(), InsightKind.MemoryGrowth, "趋势", "摘要", 88,
+                    DateTimeOffset.Now.AddHours(-1), DateTimeOffset.Now, "app.exe", ["证据"], [])
+            }),
             _ => throw new InvalidOperationException($"未知操作: {op}")
         };
     }
@@ -93,6 +100,26 @@ public sealed class CollectorIpcRoundTripTests : IAsyncLifetime
     {
         await using var client = NewClient();
         Assert.True(await client.MarkLagAsync());
+    }
+
+    [Fact]
+    public async Task HealthRoundTrip()
+    {
+        await using var client = NewClient();
+        var health = await client.GetCollectorHealthAsync();
+        Assert.NotNull(health);
+        Assert.Equal(SamplingMode.Normal, health.Profile.Mode);
+        Assert.Equal(25, health.Profile.ProcessHistoryTopN);
+    }
+
+    [Fact]
+    public async Task InsightsRoundTrip()
+    {
+        await using var client = NewClient();
+        var insight = Assert.Single(await client.GetInsightsAsync(new()));
+        Assert.Equal(InsightKind.MemoryGrowth, insight.Kind);
+        Assert.Equal("app.exe", insight.ProcessName);
+        Assert.Equal("证据", Assert.Single(insight.Evidence));
     }
 
     [Fact]

@@ -5,8 +5,10 @@ using NetScope.Core.Models;
 namespace NetScope.Windows.Performance;
 
 /// <summary>系统 CPU / 内存原始读数。网络字节由采集协调器用网卡统计增量填充。</summary>
-public sealed class SystemPerformanceProvider : ISystemPerformanceProvider
+public sealed class SystemPerformanceProvider : ISystemPerformanceProvider, IDisposable
 {
+    private readonly DiskPerformanceProvider _disk = new();
+    public void Dispose() => _disk.Dispose();
     public ValueTask<SystemPerformanceReading> ReadAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -16,7 +18,7 @@ public sealed class SystemPerformanceProvider : ISystemPerformanceProvider
         GlobalMemoryStatusEx(ref memory);
         return ValueTask.FromResult(new SystemPerformanceReading(
             DateTimeOffset.Now, kernel, user, idle,
-            memory.ullAvailPhys, memory.ullTotalPhys, 0, 0));
+            memory.ullAvailPhys, memory.ullTotalPhys, 0, 0, _disk.Read()));
     }
 
     [DllImport("kernel32.dll", SetLastError = true)]

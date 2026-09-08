@@ -6,7 +6,7 @@ using NetScope.Windows.Ipc;
 
 // 用法: NetScope.Repro --server|--client --mode=wrappers|raw|unidir|roundtrip|collector
 // roundtrip 模式：在本进程内同时启动真实 CollectorIpcServer 与 CollectorClient，逐段追踪定位 IPC 失败点。
-// collector 模式：连接真实后台 Collector（NetScope.Collector.v2 管道），全链路冒烟 V0.2 各操作。
+// collector 模式：连接真实后台 Collector（NetScope.Collector.v3 管道），全链路冒烟当前协议操作。
 var role = args.Contains("--server") ? "server" : "client";
 var mode = args.FirstOrDefault(a => a.StartsWith("--mode="))?.Split('=')[1] ?? "wrappers";
 
@@ -40,6 +40,9 @@ if (mode == "collector")
     var ports = await ipcClient.GetPortSnapshotAsync();
     Console.WriteLine($"ports: {ports.Length} 条绑定");
 
+    var health = await ipcClient.GetCollectorHealthAsync();
+    Console.WriteLine($"health: mode={health?.Profile.Mode}, CPU={health?.CpuPercent:0.00}%, memory={health?.WorkingSetBytes / 1024 / 1024}MB, cycle={health?.CycleDurationMilliseconds:0.0}ms");
+
     var markAccepted = await ipcClient.MarkLagAsync();
     Trace($"collector: markLag={markAccepted}");
     Console.WriteLine($"markLag: {(markAccepted ? "已接受" : "被拒绝")}");
@@ -56,7 +59,9 @@ if (mode == "collector")
     var processHistory = top.Count > 0
         ? await ipcClient.QueryProcessHistoryAsync(top[0].Process, DateTimeOffset.Now.AddMinutes(-5), DateTimeOffset.Now)
         : [];
-    Console.WriteLine($"processHistory(5min, {top.FirstOrDefault().Name}): {processHistory.Count} 条");
+    Console.WriteLine($"processHistory(5min, {(top.Count > 0 ? top[0].Name : "n/a")}): {processHistory.Count} 条");
+    var insights = await ipcClient.GetInsightsAsync(new(7, "", null, 20));
+    Console.WriteLine($"insights(7d): {insights.Count} 条");
     var dbPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NetScope", "data", "netscope.db");
     Console.WriteLine($"db: {dbPath} exists={File.Exists(dbPath)} size={(File.Exists(dbPath) ? new FileInfo(dbPath).Length : 0)}B");
     Trace("collector: smoke done");

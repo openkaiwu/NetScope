@@ -30,6 +30,8 @@
                     <TextBlock Text="  ·  "/>
                     <TextBlock Text="{Binding LastUpdateText}" Foreground="{DynamicResource TextMutedBrush}"/>
                 </StackPanel>
+                <TextBlock Text="{Binding CollectorHealthText}" ToolTip="{Binding CollectorHealthDetail}"
+                           Foreground="{DynamicResource TextMutedBrush}" FontSize="11" Margin="15,4,0,0"/>
             </StackPanel>
             <Border Grid.Column="1" VerticalAlignment="Center" Padding="10,5" CornerRadius="12"
                     Background="{DynamicResource SurfaceAltBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
@@ -97,6 +99,12 @@
                         <TextBlock Text="进程中心" FontWeight="SemiBold"/>
                     </StackPanel>
                 </Button>
+                <Button Command="{Binding ShowInsightsCommand}" Padding="18,8" Content="洞察">
+                    <Button.Style><Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}"><Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/><Style.Triggers><DataTrigger Binding="{Binding IsInsightsSelected}" Value="True"><Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/><Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/></DataTrigger></Style.Triggers></Style></Button.Style>
+                </Button>
+                <Button Command="{Binding ShowConnectionsCommand}" Padding="18,8" Content="TCP 连接">
+                    <Button.Style><Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}"><Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/><Style.Triggers><DataTrigger Binding="{Binding IsConnectionsSelected}" Value="True"><Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/><Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/></DataTrigger></Style.Triggers></Style></Button.Style>
+                </Button>
                 <Button Command="{Binding RefreshCommand}" Style="{StaticResource SecondaryButtonStyle}" Padding="12,8" Margin="8,0,4,0" ToolTip="立即刷新">
                     <TextBlock FontFamily="{StaticResource FluentIcons}" Text="&#xE72C;"/>
                 </Button>
@@ -105,10 +113,11 @@
 
         <Grid Grid.Row="2">
             <!-- 概览 -->
-            <Grid Visibility="{Binding IsOverviewSelected, Converter={StaticResource BoolToVisibility}}">
+            <ScrollViewer Visibility="{Binding IsOverviewSelected, Converter={StaticResource BoolToVisibility}}" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
+                <RowDefinition Height="240"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
@@ -117,10 +126,11 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                     <Border Style="{StaticResource CardStyle}" Margin="0,0,10,0">
                         <StackPanel>
+                            <TextBlock Text="{Binding ResponsivenessText}" ToolTip="{Binding ResponsivenessEvidence}" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap" Margin="0,0,0,5"/>
                             <TextBlock Text="CPU 占用" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12"/>
                             <TextBlock Text="{Binding CpuText}" FontSize="24" FontWeight="SemiBold" Margin="0,2,0,8"/>
                             <controls:SparklineVisual Values="{Binding CpuHistory}" EmptyText="连接后台记录后显示最近 15 分钟" Height="56"/>
@@ -129,18 +139,19 @@
                     <Border Grid.Column="1" Style="{StaticResource CardStyle}" Margin="0,0,10,0">
                         <StackPanel>
                             <TextBlock Text="内存占用" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12"/>
-                            <TextBlock Text="{Binding MemoryText}" FontSize="16" FontWeight="SemiBold" Margin="0,8,0,10"/>
+                            <TextBlock Text="{Binding MemoryText}" TextWrapping="Wrap" FontSize="16" FontWeight="SemiBold" Margin="0,8,0,10"/>
                             <controls:SparklineVisual Values="{Binding MemoryHistory}" EmptyText="连接后台记录后显示最近 15 分钟" Height="40"/>
                         </StackPanel>
                     </Border>
                     <Border Grid.Column="2" Style="{StaticResource CardStyle}" Margin="0,0,10,0">
                         <StackPanel>
+                            <TextBlock Text="{Binding DiskText}" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,5"/>
                             <TextBlock Text="网络收发" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12"/>
-                            <TextBlock Text="{Binding NetworkText}" FontSize="16" FontWeight="SemiBold" Margin="0,8,0,10"/>
+                            <TextBlock Text="{Binding NetworkText}" TextWrapping="Wrap" FontSize="16" FontWeight="SemiBold" Margin="0,8,0,10"/>
                             <controls:SparklineVisual Values="{Binding NetworkHistory}" EmptyText="连接后台记录后显示最近 15 分钟" Height="40"/>
                         </StackPanel>
                     </Border>
-                    <Border Grid.Column="3" Style="{StaticResource CardStyle}" Background="{DynamicResource SurfaceAltBrush}" MinWidth="230">
+                    <Border Grid.Column="3" Style="{StaticResource CardStyle}" Background="{DynamicResource SurfaceAltBrush}">
                         <StackPanel VerticalAlignment="Center">
                             <Button Command="{Binding MarkLagCommand}" Style="{StaticResource PrimaryButtonStyle}" HorizontalAlignment="Stretch">
                                 <StackPanel Orientation="Horizontal">
@@ -169,6 +180,7 @@
                             <TextBlock Text="当前高影响进程（按证据分排序，非定责）" FontWeight="SemiBold" Margin="2,0,0,8"/>
                             <ListBox Grid.Row="1" ItemsSource="{Binding TopProcesses}" SelectedItem="{Binding SelectedProcess}"
                                      Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     ScrollViewer.CanContentScroll="True" VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling"
                                      ItemContainerStyle="{StaticResource FlatListItemStyle}">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
@@ -205,6 +217,7 @@
                             <TextBlock Text="最近事件（点开查看证据）" FontWeight="SemiBold" Margin="2,0,0,8"/>
                             <ListBox Grid.Row="1" ItemsSource="{Binding RecentEvents}" SelectedItem="{Binding SelectedEvent}"
                                      Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     ScrollViewer.CanContentScroll="True" VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling"
                                      ItemContainerStyle="{StaticResource FlatListItemStyle}">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
@@ -224,7 +237,7 @@
                 </Grid>
 
                 <!-- 过去 7 天影响排行：聚合历史事件的证据排序，不构成因果结论 -->
-                <Border Grid.Row="2" Style="{StaticResource CardStyle}" Padding="12" Margin="0,12,0,0" MaxHeight="190">
+                <Border Grid.Row="2" Style="{StaticResource CardStyle}" Padding="12" Margin="0,12,0,0">
                     <StackPanel>
                         <TextBlock Text="过去 7 天最可能拖慢电脑的软件（按证据聚合排序，非定责）" FontWeight="SemiBold" Margin="2,0,0,4"/>
                         <TextBlock Text="{Binding ImpactRankingStatus}" Foreground="{DynamicResource TextMutedBrush}" FontSize="11" Margin="2,0,0,4"/>
@@ -256,8 +269,9 @@
                     </StackPanel>
                 </Border>
 
-                <TextBlock Grid.Row="3" Text="{Binding HistoryNotice}" Foreground="{DynamicResource TextMutedBrush}" FontSize="11" Margin="2,10,0,0"/>
+                <TextBlock Grid.Row="3" Text="{Binding HistoryNotice}" TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" FontSize="11" Margin="2,10,0,0"/>
             </Grid>
+            </ScrollViewer>
 
             <!-- 事件时间线 -->
             <Grid Visibility="{Binding IsEventsSelected, Converter={StaticResource BoolToVisibility}}">
@@ -268,6 +282,7 @@
                 <Border Style="{StaticResource CardStyle}" Padding="10">
                     <ListBox ItemsSource="{Binding RecentEvents}" SelectedItem="{Binding SelectedEvent}"
                              Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.CanContentScroll="True" VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling"
                              ItemContainerStyle="{StaticResource FlatListItemStyle}">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
@@ -385,6 +400,7 @@
                             </Grid>
                             <ListBox Grid.Row="1" ItemsSource="{Binding TopProcesses}" SelectedItem="{Binding SelectedProcess}"
                                      Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     ScrollViewer.CanContentScroll="True" VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling"
                                      ItemContainerStyle="{StaticResource FlatListItemStyle}">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
@@ -466,6 +482,75 @@
                     </Border>
                 </Grid>
                 <TextBlock Grid.Row="1" Text="{Binding HistoryNotice}" Foreground="{DynamicResource TextMutedBrush}" FontSize="11" Margin="2,10,0,0"/>
+            </Grid>
+            <Grid Visibility="{Binding IsInsightsSelected, Converter={StaticResource BoolToVisibility}}">
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                <StackPanel Margin="0,0,0,10">
+                    <TextBlock Text="Insights · 可回查洞察" FontSize="20" FontWeight="SemiBold"/>
+                    <TextBlock Text="从本机历史样本、性能事件、端口会话和连接记录生成；只排列证据，不下确定因果结论。" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,5,0,8"/>
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Content="分析" Command="{Binding LoadInsightsCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"/>
+                        <ComboBox DockPanel.Dock="Right" ItemsSource="{Binding InsightKindOptions}" SelectedItem="{Binding InsightKindFilter}" Width="120" Margin="8,0,0,0"/>
+                        <ComboBox DockPanel.Dock="Right" ItemsSource="{Binding InsightDayOptions}" SelectedItem="{Binding InsightDays}" Width="80" Margin="8,0,0,0" ToolTip="分析天数"/>
+                        <TextBox Text="{Binding InsightSearch, UpdateSourceTrigger=PropertyChanged}" ToolTip="筛选进程名"/>
+                    </DockPanel>
+                </StackPanel>
+                <ListBox Grid.Row="1" ItemsSource="{Binding Insights}" Background="Transparent" BorderThickness="0"
+                         HorizontalContentAlignment="Stretch" ScrollViewer.CanContentScroll="True"
+                         VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Border Style="{StaticResource CardStyle}" Padding="12" Margin="0,0,0,8">
+                                <StackPanel>
+                                    <DockPanel>
+                                        <TextBlock DockPanel.Dock="Right" Text="{Binding ConfidenceText}" Foreground="{DynamicResource AccentBrush}" FontWeight="SemiBold"/>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Border Background="{DynamicResource SurfaceAltBrush}" CornerRadius="8" Padding="8,2" Margin="0,0,8,0"><TextBlock Text="{Binding KindText}" FontSize="11"/></Border>
+                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="15" TextWrapping="Wrap"/>
+                                        </StackPanel>
+                                    </DockPanel>
+                                    <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" Margin="0,7,0,0"/>
+                                    <TextBlock Text="{Binding ProcessText}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" Margin="0,5,0,0"/>
+                                    <TextBlock Text="{Binding TimeText}" Foreground="{DynamicResource TextMutedBrush}" FontSize="11"/>
+                                    <ItemsControl ItemsSource="{Binding Evidence}" Margin="0,5,0,0"><ItemsControl.ItemTemplate><DataTemplate><TextBlock Text="{Binding StringFormat=• {0}}" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,1"/></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                                    <TextBlock Text="{Binding SourceText}" Foreground="{DynamicResource TextMutedBrush}" FontSize="10" Margin="0,5,0,0"/>
+                                    <Button Content="查看原始证据" HorizontalAlignment="Left" Margin="0,7,0,0" Padding="10,4"
+                                            Style="{StaticResource SecondaryButtonStyle}"
+                                            Command="{Binding DataContext.OpenInsightSourceCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                            CommandParameter="{Binding}"/>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                <TextBlock Grid.Row="2" Text="{Binding InsightStatus}" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{DynamicResource TextMutedBrush}" FontSize="11"/>
+            </Grid>
+            <Grid Visibility="{Binding IsConnectionsSelected, Converter={StaticResource BoolToVisibility}}">
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                <StackPanel Margin="0,0,0,10">
+                    <TextBlock Text="TCP 连接与历史" FontSize="20" FontWeight="SemiBold"/>
+                    <TextBlock Text="首次/最后观察时间不等于精确握手/关闭时间；轮询可能漏掉短连接。关闭历史后只显示当前连接与已有记录。" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,8"/>
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Content="查询" Command="{Binding LoadConnectionsCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"/>
+                        <ComboBox DockPanel.Dock="Right" ItemsSource="{Binding ConnectionGroups}" SelectedItem="{Binding ConnectionGroup}" Width="120" Margin="8,0,0,0"/>
+                        <TextBox Text="{Binding ConnectionSearch, UpdateSourceTrigger=PropertyChanged}" ToolTip="搜索进程名、PID、IP 或端口"/>
+                    </DockPanel>
+                </StackPanel>
+                <DataGrid Grid.Row="1" ItemsSource="{Binding ConnectionView}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False"
+                          EnableRowVirtualization="True" EnableColumnVirtualization="True" VirtualizingPanel.IsVirtualizingWhenGrouping="True" RowDetailsVisibilityMode="VisibleWhenSelected" FontSize="11">
+                    <DataGrid.GroupStyle><GroupStyle><GroupStyle.HeaderTemplate><DataTemplate><TextBlock Text="{Binding Name}" FontWeight="SemiBold" Margin="8"/></DataTemplate></GroupStyle.HeaderTemplate></GroupStyle></DataGrid.GroupStyle>
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="进程 / PID" Binding="{Binding Process}" Width="160"/>
+                        <DataGridTextColumn Header="远端 IP:端口" Binding="{Binding Remote}" Width="180"/>
+                        <DataGridTextColumn Header="本地 IP:端口" Binding="{Binding Local}" Width="160"/>
+                        <DataGridTextColumn Header="最后状态" Binding="{Binding State}" Width="150"/>
+                        <DataGridTextColumn Header="首次观察" Binding="{Binding FirstSeen}" Width="105"/>
+                        <DataGridTextColumn Header="最后观察" Binding="{Binding LastSeen}" Width="105"/>
+                        <DataGridTextColumn Header="结束观察" Binding="{Binding End}" Width="105"/>
+                    </DataGrid.Columns>
+                    <DataGrid.RowDetailsTemplate><DataTemplate><TextBlock Text="{Binding Detail}" Margin="10" TextWrapping="Wrap"/></DataTemplate></DataGrid.RowDetailsTemplate>
+                </DataGrid>
+                <TextBlock Grid.Row="2" Text="{Binding ConnectionStatus}" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{DynamicResource TextMutedBrush}" FontSize="11"/>
             </Grid>
         </Grid>
     </Grid>

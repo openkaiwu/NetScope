@@ -4,7 +4,7 @@
 
 NetScope is a lightweight Windows 10/11 port management and network diagnostic tool with a Chinese interface. It keeps standard technical terms such as PID, TCP, UDP, DNS, DHCP and TLS; all core operations stay read-only.
 
-![NetScope main window (default port workspace)](design/qa/netscope-default-port-v030.png)
+![NetScope main window (default port workspace)](design/qa/netscope-default-port-v060.png)
 
 ## Feature overview
 
@@ -29,9 +29,9 @@ NetScope is a lightweight Windows 10/11 port management and network diagnostic t
 - The real speed test uses Cloudflare edge speedtest endpoints, capped at roughly 62 MB per run, with progress, an overall timeout and cancel-anytime; NetScope neither uploads nor persists speedtest results.
 - ICMP failure alone does not mean you are offline; the internet verdict combines DNS, TCP 443, TLS, NCSI and multi-target evidence.
 
-### Performance recording & attribution (V0.2)
+### Performance recording, attribution & insights (V0.6)
 
-- A standalone "Performance" workspace between "Ports" and "Diagnostics" with three sub-pages: overview, event timeline and process center. See "What's new in V0.2".
+- A standalone "Performance" workspace with overview, event timeline, process center, Insights and TCP connections, spanning live state, historical evidence and long-term behavior analysis.
 
 ### Interface & runtime
 
@@ -66,12 +66,12 @@ Download the installer or portable build from [GitHub Releases](https://github.c
 ## Screenshots
 
 <p align="center">
-  <img src="design/qa/netscope-performance-v030.png" width="49%" alt="Performance overview"/>
-  <img src="design/qa/netscope-performance-events-v030.png" width="49%" alt="Event timeline"/>
+  <img src="design/qa/netscope-performance-v060.png" width="49%" alt="Performance overview"/>
+  <img src="design/qa/netscope-insights-v060.png" width="49%" alt="Evidence-backed insights"/>
 </p>
 <p align="center">
-  <img src="design/qa/netscope-performance-processes-v030.png" width="49%" alt="Process center"/>
-  <img src="design/qa/netscope-default-port-v030.png" width="49%" alt="Port workspace"/>
+  <img src="design/qa/netscope-performance-processes-v060.png" width="49%" alt="Process center"/>
+  <img src="design/qa/netscope-default-port-v060.png" width="49%" alt="Port workspace"/>
 </p>
 
 ## Project structure
@@ -107,3 +107,22 @@ $dotnet = "$env:LOCALAPPDATA\NetScopeTools\dotnet\dotnet.exe"
 - Performance sampling and history are stored only on this machine and never uploaded; the Collector never terminates processes and never modifies firewall or system network configuration
 
 The port registry data can be refreshed from the official IANA registry via `scripts/update-iana.ps1`; the repository also ships an offline baseline service snapshot so lookups work without a network.
+
+## V0.4 analysis deepening (local development build)
+
+- Relative per-process CPU detection using EWMA and median/MAD baselines, a 30-second warmup, a 5-second sustain requirement and cooldown. Baselines are isolated by PID and start time and relearn after restart.
+- A 0–100 responsiveness estimate combines CPU, memory, disk, foreground load and recent user lag marks. It is a resource-pressure heuristic, not measured input latency; missing disk evidence is explicitly disclosed.
+- TCP connections and history show IPv4/IPv6 local/remote endpoints, process identity, last state and observed time boundaries. Search and grouping by process, remote IP or remote port are available in the Performance workspace. The view shows up to 300 recent entries over seven days; storage follows history settings.
+- PDH physical-disk aggregate read/write latency, queue length and active percentage enrich disk-pressure events, including low-throughput stalls. Unavailable counters remain unknown; the original throughput rule remains a fallback.
+- Additive SQLite migration preserves V0.3 history. Polling can miss short connections, and observed timestamps are not exact handshake/close times. No new GitHub release is created by this implementation.
+
+## V0.5–V0.6 self-monitoring, behavior analysis and Insights (local development build)
+
+- Collector self-monitoring reports its CPU, working set, disk I/O and sampling-cycle duration. Sustained budget violations move sampling through Normal → Reduced → Minimal; hysteresis restores one level at a time, and transitions are recorded locally.
+- Process, event, connection and Insights lists use recycling virtualization. Executable metadata and signature checks remain asynchronous and cached after the user selects a process.
+- Memory-growth analysis keeps process instances separate by PID and start time, combining observation span, total growth, slope, R² and non-decreasing samples. It does not present a trend as proof of a leak.
+- Periodic behavior analysis extracts CPU/I/O activity episodes from dynamic baselines and scores regularity by mean interval and coefficient of variation; continuous load and irregular bursts stay unclassified.
+- The Insights page summarizes 7/14/30-day lag marks, recurring events, memory trends, periodic behavior, port sessions and remote connections. Filters cover process, time window and type; “View raw evidence” routes to the source event, process curve or filtered connection table.
+- The SQLite native runtime is pinned to `SQLitePCLRaw.lib.e_sqlite3 2.1.13`, replacing 2.1.10, which carries a high-severity advisory.
+
+See the [V0.5–V0.6 implementation notes](docs/V0.5-V0.6实现说明.md). The local code version is 0.6.0; this work does not create a GitHub release.

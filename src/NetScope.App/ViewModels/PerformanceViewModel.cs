@@ -58,6 +58,7 @@ public sealed partial class EventCardViewModel : ObservableObject
         PerformanceEventType.DiskIoPressure => "I/O 压力",
         PerformanceEventType.NetworkDegradation => "网络退化",
         PerformanceEventType.UserMarkedLag => "用户标记",
+        PerformanceEventType.RelativeCpuAnomaly => "相对 CPU 异常",
         _ => "未知"
     };
 
@@ -129,9 +130,130 @@ public sealed partial class PerformanceViewModel : ObservableObject, IDisposable
     private readonly Services.ProcessPathLookup _pathLookup;
     private readonly IProcessFileMetadataProvider? _fileMetadata;
     private int _tick;
+    private bool _polling;
+    private bool _loadingConnections;
 
     [ObservableProperty] private bool _collectorConnected;
     [ObservableProperty] private string _collectorStatus = "正在连接后台记录…";
+    [ObservableProperty] private string _collectorHealthText = "自监控：等待采样";
+    [ObservableProperty] private string _collectorHealthDetail = "";
+    [ObservableProperty] private string _responsivenessText = "响应性：等待采样";
+    [ObservableProperty] private string _responsivenessEvidence = "";
+    [ObservableProperty] private string _diskText = "磁盘：未采集";
+    [ObservableProperty] private bool _isConnectionsSelected;
+    [ObservableProperty] private bool _isInsightsSelected;
+    [ObservableProperty] private int _insightDays = 30;
+    [ObservableProperty] private string _insightSearch = "";
+    [ObservableProperty] private string _insightKindFilter = "全部";
+    [ObservableProperty] private string _insightStatus = "";
+    private bool _loadingInsights;
+    public int[] InsightDayOptions { get; } = [7, 14, 30];
+    public string[] InsightKindOptions { get; } = ["全部", "卡顿统计", "重复事件", "内存趋势", "周期行为", "端口活动", "连接活动"];
+    public ObservableCollection<InsightCardViewModel> Insights { get; } = [];
+    [ObservableProperty] private string _connectionSearch = "";
+    [ObservableProperty] private string _connectionGroup = "不分组";
+    [ObservableProperty] private string _connectionStatus = "";
+    public string[] ConnectionGroups { get; } = ["不分组", "进程", "远端", "远端端口"];
+    public ObservableCollection<ConnectionRowViewModel> Connections { get; } = [];
+    public System.ComponentModel.ICollectionView ConnectionView { get; }
+    partial void OnConnectionGroupChanged(string value)
+    {
+        ConnectionView.GroupDescriptions.Clear();
+        var property = value switch { "进程" => "Process", "远端" => "RemoteAddress", "远端端口" => "RemotePort", _ => null };
+        if (property is not null) ConnectionView.GroupDescriptions.Add(new System.Windows.Data.PropertyGroupDescription(property));
+    }
+    [RelayCommand]
+    private async Task LoadConnectionsAsync()
+    {
+        if (_loadingConnections) return;
+        _loadingConnections = true;
+        try
+        {
+            var rows = await _client.QueryConnectionsAsync(new(DateTimeOffset.Now.AddDays(-7), DateTimeOffset.Now, ConnectionSearch, 300));
+            Connections.Clear();
+            foreach (var row in rows) Connections.Add(new(row));
+            ConnectionStatus = rows.Count == 0 ? "未找到连接记录（可能尚无数据、历史已关闭或后台未连接）" : $"过去 7 天，显示最近 {rows.Count} 条（上限 300），包含当前连接";
+        }
+        catch (Exception) { ConnectionStatus = "连接查询失败，请稍后重试"; }
+        finally { _loadingConnections = false; }
+    }
+    [RelayCommand] private void ShowConnections()
+    {
+        IsInsightsSelected = false; IsOverviewSelected = false; IsEventsSelected = false; IsProcessesSelected = false; IsConnectionsSelected = true;
+        _ = LoadConnectionsAsync();
+    }
+
+    [RelayCommand]
+    private void ShowInsights()
+    {
+        IsOverviewSelected = false; IsEventsSelected = false; IsProcessesSelected = false; IsConnectionsSelected = false; IsInsightsSelected = true;
+        _ = LoadInsightsAsync();
+    }
+
+    [RelayCommand]
+    private async Task LoadInsightsAsync()
+    {
+        if (_loadingInsights) return;
+        _loadingInsights = true;
+        InsightStatus = "正在分析本机历史…";
+        try
+        {
+            var kind = InsightKindFilter switch
+            {
+                "卡顿统计" => InsightKind.LagSummary,
+                "重复事件" => InsightKind.FrequentPerformanceEvent,
+                "内存趋势" => InsightKind.MemoryGrowth,
+                "周期行为" => InsightKind.PeriodicActivity,
+                "端口活动" => InsightKind.PortActivity,
+                "连接活动" => InsightKind.ConnectionActivity,
+                _ => (InsightKind?)null
+            };
+            var items = await _client.GetInsightsAsync(new(InsightDays, InsightSearch, kind, 100));
+            Insights.Clear();
+            foreach (var item in items) Insights.Add(new(item));
+            InsightStatus = items.Count == 0
+                ? "暂无可展示洞察：需要开启历史并积累足够样本或事件"
+                : $"基于最近 {InsightDays} 天本地历史生成 {items.Count} 条；结论可回查，不代表确定因果";
+        }
+        catch (Exception) { InsightStatus = "洞察分析失败，请稍后重试"; }
+        finally { _loadingInsights = false; }
+    }
+
+    [RelayCommand]
+    private async Task OpenInsightSourceAsync(InsightCardViewModel? card)
+    {
+        if (card is null) return;
+        var item = card.Item;
+        if (item.SourceEventIds.Count > 0)
+        {
+            var sourceIds = item.SourceEventIds.ToHashSet();
+            var events = await _client.GetRecentEventsAsync(1000);
+            RecentEvents.Clear();
+            foreach (var evt in events) RecentEvents.Add(new(evt));
+            SelectedEvent = RecentEvents.FirstOrDefault(x => sourceIds.Contains(x.Event.Id));
+            IsInsightsSelected = false; IsConnectionsSelected = false; IsOverviewSelected = false;
+            IsProcessesSelected = false; IsEventsSelected = true;
+            return;
+        }
+        if (item.Kind == InsightKind.ConnectionActivity && !string.IsNullOrWhiteSpace(item.ProcessName))
+        {
+            ConnectionSearch = item.ProcessName;
+            IsInsightsSelected = false; IsOverviewSelected = false; IsEventsSelected = false;
+            IsProcessesSelected = false; IsConnectionsSelected = true;
+            await LoadConnectionsAsync();
+            return;
+        }
+        if (!string.IsNullOrWhiteSpace(item.ProcessName))
+        {
+            ProcessSearchText = item.ProcessName;
+            IsInsightsSelected = false; IsConnectionsSelected = false; IsOverviewSelected = false;
+            IsEventsSelected = false; IsProcessesSelected = true;
+            await RefreshProcessesAsync();
+            SelectedProcess = TopProcesses.FirstOrDefault(x => x.Name.Contains(item.ProcessName, StringComparison.OrdinalIgnoreCase));
+            return;
+        }
+        InsightStatus = "这条洞察没有可定位的原始进程或事件；证据已完整列在卡片中";
+    }
     [ObservableProperty] private string _cpuText = "—";
     [ObservableProperty] private double _cpuPercent;
     [ObservableProperty] private string _memoryText = "—";
@@ -179,6 +301,7 @@ public sealed partial class PerformanceViewModel : ObservableObject, IDisposable
     public PerformanceViewModel(ICollectorClient client, AppSettings settings,
         IProcessFileMetadataProvider? fileMetadata = null, Services.ProcessPathLookup? pathLookup = null)
     {
+        ConnectionView = System.Windows.Data.CollectionViewSource.GetDefaultView(Connections);
         _client = client;
         _fileMetadata = fileMetadata;
         _pathLookup = pathLookup ?? new Services.ProcessPathLookup();
@@ -206,6 +329,8 @@ public sealed partial class PerformanceViewModel : ObservableObject, IDisposable
 
     private async Task PollAsync()
     {
+        if (_polling) return;
+        _polling = true;
         try
         {
             var connected = await _client.IsAvailableAsync();
@@ -216,13 +341,35 @@ public sealed partial class PerformanceViewModel : ObservableObject, IDisposable
             }
             if (!connected)
             {
+                CollectorHealthText = "自监控：后台未连接";
+                CollectorHealthDetail = "连接 Collector 后显示自身 CPU、内存、磁盘写入和采样周期。";
+                ResponsivenessText = "响应性：后台未连接";
+                DiskText = "磁盘：未采集";
                 if (TopProcesses.Count > 0) TopProcesses.Clear();
                 return;
             }
 
             var system = await _client.GetSystemSampleAsync();
+            var health = await _client.GetCollectorHealthAsync();
+            if (health is not null)
+            {
+                CollectorHealthText = $"自监控：{health.Profile.Mode} · CPU {health.CpuPercent:0.00}% · 内存 {FormatBytes(health.WorkingSetBytes)}";
+                CollectorHealthDetail = $"读 {FormatBytes(health.ReadBytesPerSecond)}/s；写 {FormatBytes(health.WriteBytesPerSecond)}/s；周期耗时 {health.CycleDurationMilliseconds:0} ms；性能采样 {health.Profile.PerformanceIntervalMilliseconds} ms；端口采样 {health.Profile.PortIntervalMilliseconds} ms" +
+                    (health.Reasons.Count > 0 ? $"\n触发原因：{string.Join("；", health.Reasons)}" : "\n当前未触发自动降频");
+            }
+            else
+            {
+                CollectorHealthText = "自监控：等待新采样";
+                CollectorHealthDetail = "Collector 已连接，正在等待首个自身开销样本。";
+            }
             if (system is not null)
             {
+                var fresh = DateTimeOffset.Now - system.Timestamp < TimeSpan.FromSeconds(10);
+                ResponsivenessText = fresh && system.Responsiveness is { } score ? $"响应性 {score.Score}/100 · {score.Label}" : "响应性：等待新采样";
+                ResponsivenessEvidence = system.Responsiveness is { } assessment ? string.Join("\n", assessment.Evidence) : "";
+                DiskText = fresh && system.Disk is { } d
+                    ? $"磁盘合计 · 读 {d.ReadLatencyMs:0.0} ms / 写 {d.WriteLatencyMs:0.0} ms · 队列 {d.QueueLength:0.00} · 活跃 {d.ActivePercent:0}%"
+                    : "磁盘：未采集（计数器不可用、预热或记录暂停）";
                 CpuPercent = system.CpuPercent;
                 CpuText = $"{system.CpuPercent:0}%";
                 var used = system.TotalMemoryBytes - system.AvailableMemoryBytes;
@@ -240,14 +387,22 @@ public sealed partial class PerformanceViewModel : ObservableObject, IDisposable
                 while (MemoryHistory.Count > MaxCpuHistory) MemoryHistory.RemoveAt(0);
                 while (NetworkHistory.Count > MaxCpuHistory) NetworkHistory.RemoveAt(0);
             }
+            else
+            {
+                ResponsivenessText = "响应性：等待采样或记录已暂停";
+                ResponsivenessEvidence = "";
+                DiskText = "磁盘：未采集";
+            }
 
             if (_tick % 2 == 0) await RefreshProcessesAsync();
+            if (IsConnectionsSelected) await LoadConnectionsAsync();
             _tick++;
         }
         catch (Exception)
         {
             // 轮询失败按未连接处理，下一轮重试
         }
+        finally { _polling = false; }
     }
 
     private async Task RefreshProcessesAsync()
@@ -477,14 +632,15 @@ public sealed partial class PerformanceViewModel : ObservableObject, IDisposable
     {
         await PollAsync();
         await PollEventsAsync();
+        if (IsInsightsSelected) await LoadInsightsAsync();
     }
 
     [RelayCommand]
     private async Task SearchProcessesAsync() => await RefreshProcessesAsync();
 
-    [RelayCommand] private void ShowOverview() { IsOverviewSelected = true; IsEventsSelected = false; IsProcessesSelected = false; }
-    [RelayCommand] private void ShowEvents() { IsOverviewSelected = false; IsEventsSelected = true; IsProcessesSelected = false; }
-    [RelayCommand] private void ShowProcesses() { IsOverviewSelected = false; IsEventsSelected = false; IsProcessesSelected = true; }
+    [RelayCommand] private void ShowOverview() { IsInsightsSelected = false; IsConnectionsSelected = false; IsOverviewSelected = true; IsEventsSelected = false; IsProcessesSelected = false; }
+    [RelayCommand] private void ShowEvents() { IsInsightsSelected = false; IsConnectionsSelected = false; IsOverviewSelected = false; IsEventsSelected = true; IsProcessesSelected = false; }
+    [RelayCommand] private void ShowProcesses() { IsInsightsSelected = false; IsConnectionsSelected = false; IsOverviewSelected = false; IsEventsSelected = false; IsProcessesSelected = true; }
 
     public void Dispose()
     {

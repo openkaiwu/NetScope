@@ -40,5 +40,5 @@ public static class PerformanceMath
             ComputeSystemCpuPercent(previous.KernelCpuTime, current.KernelCpuTime, previous.UserCpuTime, current.UserCpuTime, previous.IdleCpuTime, current.IdleCpuTime),
             (long)current.AvailableMemoryBytes, (long)current.TotalMemoryBytes,
             ComputeRate(previous.NetworkReceivedBytes, current.NetworkReceivedBytes, elapsedSeconds),
-            ComputeRate(previous.NetworkSentBytes, current.NetworkSentBytes, elapsedSeconds));
+            ComputeRate(previous.NetworkSentBytes, current.NetworkSentBytes, elapsedSeconds), Disk: current.Disk);
 }

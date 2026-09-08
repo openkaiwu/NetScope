@@ -91,6 +91,126 @@ public sealed class SqliteHistoryStore : IPerformanceHistoryStore
         return ValueTask.CompletedTask;
     }
 
+    public ValueTask AppendCollectorHealthAsync(CollectorHealthSnapshot sample, CancellationToken cancellationToken = default)
+    {
+        Enqueue(new WriteWorkItem(Health: sample));
+        return ValueTask.CompletedTask;
+    }
+
+    public async ValueTask<IReadOnlyList<CollectorHealthSnapshot>> QueryCollectorHealthAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default)
+    {
+        if (!IsUsable) return [];
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            await using var command = _connection!.CreateCommand();
+            command.CommandText = "SELECT Json FROM CollectorHealth WHERE Timestamp >= @from AND Timestamp <= @to ORDER BY Timestamp";
+            command.Parameters.AddWithValue("@from", from.UtcTicks);
+            command.Parameters.AddWithValue("@to", to.UtcTicks);
+            var result = new List<CollectorHealthSnapshot>();
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                if (JsonSerializer.Deserialize<CollectorHealthSnapshot>(reader.GetString(0)) is { } item) result.Add(item);
+            return result;
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async ValueTask<IReadOnlyList<ProcessHistoryPoint>> QueryProcessSeriesAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default)
+    {
+        if (!IsUsable || to <= from) return [];
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            // At most about 720 buckets per process; GROUP BY lower(Name) intentionally aggregates multiple instances of one application.
+            var bucket = Math.Max(TimeSpan.FromSeconds(30).Ticks, (to - from).Ticks / 720);
+            await using var command = _connection!.CreateCommand();
+            command.CommandText = """
+                SELECT Name, ProcessId, StartedAt, (Timestamp / @bucket) * @bucket AS Bucket,
+                       AVG(CpuPercent), AVG(PrivateBytes), AVG(ReadBps + WriteBps), COUNT(*)
+                FROM ProcessSamples WHERE Timestamp >= @from AND Timestamp <= @to
+                GROUP BY ProcessId, StartedAt, lower(Name), Bucket
+                ORDER BY lower(Name), StartedAt, Bucket LIMIT 50000
+                """;
+            command.Parameters.AddWithValue("@bucket", bucket);
+            command.Parameters.AddWithValue("@from", from.UtcTicks);
+            command.Parameters.AddWithValue("@to", to.UtcTicks);
+            var result = new List<ProcessHistoryPoint>();
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                result.Add(new(reader.GetString(0), new DateTimeOffset(reader.GetInt64(3), TimeSpan.Zero).ToLocalTime(),
+                    reader.GetDouble(4), (long)reader.GetDouble(5), (long)reader.GetDouble(6), (int)reader.GetInt64(7),
+                    (int)reader.GetInt64(1), new DateTimeOffset(reader.GetInt64(2), TimeSpan.Zero).ToLocalTime()));
+            return result;
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async ValueTask<IReadOnlyList<PortActivitySummary>> QueryPortActivityAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default)
+    {
+        if (!IsUsable) return [];
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            await using var command = _connection!.CreateCommand();
+            command.CommandText = """
+                SELECT Port, Protocol, ProcessName, COUNT(*), SUM(MIN(EndedAt, @to) - MAX(StartedAt, @from)), MAX(EndedAt)
+                FROM PortSessions WHERE StartedAt <= @to AND EndedAt >= @from
+                GROUP BY Port, Protocol, ProcessName ORDER BY COUNT(*) DESC LIMIT 1000
+                """;
+            command.Parameters.AddWithValue("@from", from.UtcTicks);
+            command.Parameters.AddWithValue("@to", to.UtcTicks);
+            var result = new List<PortActivitySummary>();
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                result.Add(new((int)reader.GetInt64(0), (PortProtocol)reader.GetInt64(1), reader.GetString(2),
+                    (int)reader.GetInt64(3), reader.GetInt64(4) / (double)TimeSpan.TicksPerSecond,
+                    new DateTimeOffset(reader.GetInt64(5), TimeSpan.Zero).ToLocalTime()));
+            return result;
+        }
+        finally { _gate.Release(); }
+    }
+
+    public ValueTask AppendConnectionAsync(TcpConnectionRecord connection, CancellationToken cancellationToken = default)
+    {
+        Enqueue(new WriteWorkItem(Connection: connection));
+        return ValueTask.CompletedTask;
+    }
+
+    public async ValueTask<IReadOnlyList<TcpConnectionRecord>> QueryConnectionsAsync(ConnectionQuery query, CancellationToken cancellationToken = default)
+    {
+        if (!IsUsable) return [];
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            await using var command = _connection!.CreateCommand();
+            command.CommandText = "SELECT Json FROM TcpConnections WHERE FirstSeen <= @to AND LastSeen >= @from AND (@search = '' OR instr(lower(SearchText), lower(@search)) > 0) ORDER BY LastSeen DESC LIMIT @limit";
+            command.Parameters.AddWithValue("@from", query.From.UtcTicks);
+            command.Parameters.AddWithValue("@to", query.To.UtcTicks);
+            command.Parameters.AddWithValue("@search", query.Search ?? "");
+            command.Parameters.AddWithValue("@limit", Math.Clamp(query.Limit, 1, 500));
+            var result = new List<TcpConnectionRecord>();
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                if (JsonSerializer.Deserialize<TcpConnectionRecord>(reader.GetString(0)) is { } record) result.Add(record);
+            return result;
+        }
+        finally { _gate.Release(); }
+    }
+
+    private async Task WriteConnectionAsync(TcpConnectionRecord record, SqliteTransaction transaction, CancellationToken cancellationToken)
+    {
+        await using var command = _connection!.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "INSERT INTO TcpConnections (Id, FirstSeen, LastSeen, SearchText, Json) VALUES (@id, @first, @last, @search, @json) ON CONFLICT(Id) DO UPDATE SET LastSeen=@last, SearchText=@search, Json=@json";
+        command.Parameters.AddWithValue("@id", record.Id.ToString());
+        command.Parameters.AddWithValue("@first", record.FirstSeenAt.UtcTicks);
+        command.Parameters.AddWithValue("@last", record.LastSeenAt.UtcTicks);
+        command.Parameters.AddWithValue("@search", $"{record.ProcessName} {record.ProcessId} {record.LocalAddress} {record.LocalPort} {record.RemoteAddress} {record.RemotePort}");
+        command.Parameters.AddWithValue("@json", JsonSerializer.Serialize(record));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     public ValueTask AppendPortSessionAsync(PortSessionRecord session, CancellationToken cancellationToken = default)
     {
         Enqueue(new WriteWorkItem(PortSession: session));
@@ -105,7 +225,7 @@ public sealed class SqliteHistoryStore : IPerformanceHistoryStore
         {
             await using var command = _connection!.CreateCommand();
             command.CommandText = """
-                SELECT Timestamp, CpuPercent, AvailableMemoryBytes, TotalMemoryBytes, NetworkReceivedBps, NetworkSentBps, NetworkLinkUp, NetworkAdapterName
+                SELECT Timestamp, CpuPercent, AvailableMemoryBytes, TotalMemoryBytes, NetworkReceivedBps, NetworkSentBps, NetworkLinkUp, NetworkAdapterName, AnalysisJson
                 FROM SystemSamples WHERE Timestamp >= @from AND Timestamp <= @to ORDER BY Timestamp
                 """;
             command.Parameters.AddWithValue("@from", from.UtcTicks);
@@ -119,7 +239,8 @@ public sealed class SqliteHistoryStore : IPerformanceHistoryStore
                     new DateTimeOffset(reader.GetInt64(0), TimeSpan.Zero).ToLocalTime(),
                     reader.GetDouble(1), reader.GetInt64(2), reader.GetInt64(3),
                     reader.GetInt64(4), reader.GetInt64(5),
-                    reader.GetInt64(6) != 0, reader.GetString(7)));
+                    reader.GetInt64(6) != 0, reader.GetString(7),
+                    ReadAnalysis(reader, 8)?.Disk, ReadAnalysis(reader, 8)?.Responsiveness));
             }
             return result;
         }
@@ -325,6 +446,8 @@ public sealed class SqliteHistoryStore : IPerformanceHistoryStore
                 if (item.System is { } system) await WriteSystemAsync(system, transaction, cancellationToken);
                 else if (item.Process is { } process) await WriteProcessAsync(process, transaction, cancellationToken);
                 else if (item.Event is { } evt) await WriteEventAsync(evt, transaction, cancellationToken);
+                else if (item.Health is { } health) await WriteHealthAsync(health, transaction, cancellationToken);
+                else if (item.Connection is { } connection) await WriteConnectionAsync(connection, transaction, cancellationToken);
                 else if (item.PortSession is { } session) await WritePortSessionAsync(session, transaction, cancellationToken);
             }
             await transaction.CommitAsync(cancellationToken);
@@ -333,6 +456,17 @@ public sealed class SqliteHistoryStore : IPerformanceHistoryStore
         {
             _gate.Release();
         }
+    }
+
+    private async Task WriteHealthAsync(CollectorHealthSnapshot sample, SqliteTransaction transaction, CancellationToken cancellationToken)
+    {
+        await using var command = _connection!.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "INSERT INTO CollectorHealth (Timestamp, Mode, Json) VALUES (@ts, @mode, @json)";
+        command.Parameters.AddWithValue("@ts", sample.Timestamp.UtcTicks);
+        command.Parameters.AddWithValue("@mode", (int)sample.Profile.Mode);
+        command.Parameters.AddWithValue("@json", JsonSerializer.Serialize(sample));
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private async Task WritePortSessionAsync(PortSessionRecord session, SqliteTransaction transaction, CancellationToken cancellationToken)
@@ -357,8 +491,8 @@ public sealed class SqliteHistoryStore : IPerformanceHistoryStore
         await using var command = _connection!.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = """
-            INSERT INTO SystemSamples (Timestamp, CpuPercent, AvailableMemoryBytes, TotalMemoryBytes, NetworkReceivedBps, NetworkSentBps, NetworkLinkUp, NetworkAdapterName)
-            VALUES (@ts, @cpu, @avail, @total, @rx, @tx, @link, @adapter)
+            INSERT INTO SystemSamples (Timestamp, CpuPercent, AvailableMemoryBytes, TotalMemoryBytes, NetworkReceivedBps, NetworkSentBps, NetworkLinkUp, NetworkAdapterName, AnalysisJson)
+            VALUES (@ts, @cpu, @avail, @total, @rx, @tx, @link, @adapter, @analysis)
             """;
         command.Parameters.AddWithValue("@ts", sample.Timestamp.UtcTicks);
         command.Parameters.AddWithValue("@cpu", sample.CpuPercent);
@@ -368,8 +502,13 @@ public sealed class SqliteHistoryStore : IPerformanceHistoryStore
         command.Parameters.AddWithValue("@tx", sample.NetworkSentBytesPerSecond);
         command.Parameters.AddWithValue("@link", sample.NetworkLinkUp ? 1 : 0);
         command.Parameters.AddWithValue("@adapter", sample.NetworkAdapterName ?? string.Empty);
+        command.Parameters.AddWithValue("@analysis", JsonSerializer.Serialize(new AnalysisData(sample.Disk, sample.Responsiveness)));
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
+
+    private sealed record AnalysisData(DiskPerformanceSample? Disk, ResponsivenessAssessment? Responsiveness);
+    private static AnalysisData? ReadAnalysis(SqliteDataReader reader, int index) =>
+        reader.IsDBNull(index) ? null : JsonSerializer.Deserialize<AnalysisData>(reader.GetString(index));
 
     private async Task WriteProcessAsync(ProcessPerformanceSample sample, SqliteTransaction transaction, CancellationToken cancellationToken)
     {
@@ -468,6 +607,8 @@ public sealed class SqliteHistoryStore : IPerformanceHistoryStore
                 DELETE FROM EventContributors WHERE EventId NOT IN (SELECT Id FROM PerformanceEvents);
                 DELETE FROM ProcessInstances WHERE LastSeen < @cutoff;
                 DELETE FROM PortSessions WHERE EndedAt < @cutoff;
+                DELETE FROM TcpConnections WHERE LastSeen < @cutoff;
+                DELETE FROM CollectorHealth WHERE Timestamp < @cutoff;
                 DELETE FROM SystemSamples WHERE Timestamp < @day AND Id NOT IN (SELECT MIN(Id) FROM SystemSamples WHERE Timestamp < @day GROUP BY Timestamp / @bucket);
                 DELETE FROM ProcessSamples WHERE Timestamp < @day AND Id NOT IN (SELECT MIN(Id) FROM ProcessSamples WHERE Timestamp < @day GROUP BY ProcessId, StartedAt, Timestamp / @bucket);
                 """;
@@ -575,6 +716,10 @@ public sealed class SqliteHistoryStore : IPerformanceHistoryStore
                 PRIMARY KEY (EventId, ProcessId, StartedAt)
             ) WITHOUT ROWID;
 
+            CREATE TABLE IF NOT EXISTS TcpConnections (Id TEXT PRIMARY KEY, FirstSeen INTEGER NOT NULL, LastSeen INTEGER NOT NULL, SearchText TEXT NOT NULL, Json TEXT NOT NULL);
+            CREATE INDEX IF NOT EXISTS IX_TcpConnections_LastSeen ON TcpConnections(LastSeen);
+            CREATE TABLE IF NOT EXISTS CollectorHealth (Id INTEGER PRIMARY KEY AUTOINCREMENT, Timestamp INTEGER NOT NULL, Mode INTEGER NOT NULL, Json TEXT NOT NULL);
+            CREATE INDEX IF NOT EXISTS IX_CollectorHealth_Timestamp ON CollectorHealth(Timestamp);
             CREATE TABLE IF NOT EXISTS PortSessions (
                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
                 Port INTEGER NOT NULL,
@@ -588,6 +733,22 @@ public sealed class SqliteHistoryStore : IPerformanceHistoryStore
             CREATE INDEX IF NOT EXISTS IX_PortSessions_EndedAt ON PortSessions(EndedAt);
             """;
         await schema.ExecuteNonQueryAsync(cancellationToken);
+        // Additive migration: preserve all V0.3 samples and leave unknown new metrics null.
+        await using var columns = _connection.CreateCommand();
+        columns.CommandText = "PRAGMA table_info(SystemSamples)";
+        var hasAnalysis = false;
+        await using (var reader = await columns.ExecuteReaderAsync(cancellationToken))
+            while (await reader.ReadAsync(cancellationToken)) hasAnalysis |= reader.GetString(1) == "AnalysisJson";
+        if (!hasAnalysis)
+        {
+            await using var migrate = _connection.CreateCommand();
+            migrate.CommandText = "ALTER TABLE SystemSamples ADD COLUMN AnalysisJson TEXT";
+            await migrate.ExecuteNonQueryAsync(cancellationToken);
+        }
+        // A previous collector may have stopped without a final snapshot. Never present these as live.
+        await using var interrupted = _connection.CreateCommand();
+        interrupted.CommandText = "UPDATE TcpConnections SET Json = json_set(Json, '$.EndedAt', json_extract(Json, '$.LastSeenAt'), '$.EndReason', '采集器重启，后续状态未知') WHERE json_extract(Json, '$.EndedAt') IS NULL";
+        await interrupted.ExecuteNonQueryAsync(cancellationToken);
     }
 
     /// <summary>数据库损坏或写入失败时的恢复：保留损坏副本，重建空库。实时采样不受影响。</summary>
@@ -693,5 +854,7 @@ public sealed class SqliteHistoryStore : IPerformanceHistoryStore
         SystemPerformanceSample? System = null,
         ProcessPerformanceSample? Process = null,
         PerformanceEvent? Event = null,
-        PortSessionRecord? PortSession = null);
+        PortSessionRecord? PortSession = null,
+        TcpConnectionRecord? Connection = null,
+        CollectorHealthSnapshot? Health = null);
 }

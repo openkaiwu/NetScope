@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\NetScope.Core\NetScope.Core.csproj" />
@@ -28,7 +28,7 @@
     <Platforms>x64</Platforms>
     <AssemblyName>NetScope</AssemblyName>
     <RootNamespace>NetScope.App</RootNamespace>
-    <Version>0.3.0</Version>
+    <Version>0.6.0</Version>
     <Product>NetScope</Product>
     <Description>轻量 Windows 端口管理与网络诊断工具</Description>
     <Authors>NetScope contributors</Authors>

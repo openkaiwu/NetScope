@@ -1,6 +1,6 @@
 param(
     [string]$Configuration = 'Release',
-    [string]$Version = '0.3.0'
+    [string]$Version = '0.6.0'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -44,7 +44,7 @@ $isccCandidates = @(
 )
 $iscc = $isccCandidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
 if ($iscc) {
-    & $iscc (Join-Path $repository 'installer\NetScope.iss')
+    & $iscc "/DMyAppVersion=$Version" (Join-Path $repository 'installer\NetScope.iss')
     if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compilation failed.' }
 } else {
     Write-Warning 'Inno Setup 6 is not installed; portable package is ready and installer script was generated.'

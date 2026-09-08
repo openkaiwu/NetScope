@@ -29,6 +29,7 @@ public sealed class CollectorHost : IAsyncDisposable
     private readonly CancellationTokenSource _lifetime = new();
     private readonly object _eventLock = new();
     private readonly List<PerformanceEvent> _recentEvents = [];
+    private readonly ProcessBehaviorAnalyzer _behaviorAnalyzer = new();
     private Task? _settingsLoop;
     private volatile AppSettings _settings = new();
     private bool _started;
@@ -54,7 +55,10 @@ public sealed class CollectorHost : IAsyncDisposable
             onEvent: AddRecentEvent,
             performanceEnabled: () => _settings.BackgroundRecording,
             portSessions: _portSessions,
-            processNameResolver: ResolveProcessName);
+            processNameResolver: ResolveProcessName,
+            historyEnabled: () => _settings.HistoryEnabled && _settings.BackgroundRecording,
+            connectionIdentity: pid => _processResolver.ResolveAsync(pid).GetAwaiter().GetResult(),
+            selfMonitor: new CollectorSelfMonitor());
         _server = new CollectorIpcServer(HandleAsync, _logger);
     }
 
@@ -73,6 +77,7 @@ public sealed class CollectorHost : IAsyncDisposable
             _settings = new AppSettings().Normalize();
         }
 
+        _historyStore.Inner.ConfigureRetention(_settings.HistoryRetentionDays);
         await _historyStore.Inner.InitializeAsync();
         _settingsLoop = Task.Run(() => SettingsReloadLoopAsync(_lifetime.Token));
 
@@ -96,6 +101,7 @@ public sealed class CollectorHost : IAsyncDisposable
                 if (loaded != _settings)
                 {
                     _settings = loaded;
+                    _historyStore.Inner.ConfigureRetention(loaded.HistoryRetentionDays);
                     await _logger.WriteAsync("INFO", $"设置已重载: history={loaded.HistoryEnabled}, retention={loaded.HistoryRetentionDays}d, recording={loaded.BackgroundRecording}");
                 }
             }
@@ -126,6 +132,47 @@ public sealed class CollectorHost : IAsyncDisposable
     {
         switch (op)
         {
+            case CollectorProtocol.OpConnections:
+            {
+                var request = payloadJson is null ? null : CollectorProtocol.Deserialize<ConnectionQuery>(payloadJson);
+                if (request is null) return "[]";
+                var query = request with { Limit = Math.Clamp(request.Limit, 1, 500), Search = (request.Search ?? "")[..Math.Min(request.Search?.Length ?? 0, 200)] };
+                var stored = await _historyStore.Inner.QueryConnectionsAsync(query, cancellationToken);
+                var live = _coordinator.Connections;
+                var liveIds = live.Select(c => c.Id).ToHashSet();
+                stored = stored.Select(c => c.EndedAt is null && !liveIds.Contains(c.Id)
+                    ? c with { EndedAt = c.LastSeenAt, EndReason = "观察已中断或记录暂停，后续状态未知" } : c).ToArray();
+                var active = live.Where(c => c.FirstSeenAt <= query.To && c.LastSeenAt >= query.From &&
+                    $"{c.ProcessName} {c.ProcessId} {c.LocalAddress} {c.LocalPort} {c.RemoteAddress} {c.RemotePort}".Contains(query.Search, StringComparison.OrdinalIgnoreCase));
+                return CollectorProtocol.Serialize(active.Concat(stored).DistinctBy(c => c.Id).OrderByDescending(c => c.LastSeenAt).Take(query.Limit).ToArray());
+            }
+
+            case CollectorProtocol.OpHealth:
+                return _coordinator.CurrentHealth is { } health ? CollectorProtocol.Serialize(health) : null;
+
+            case CollectorProtocol.OpInsights:
+            {
+                var request = payloadJson is null ? null : CollectorProtocol.Deserialize<InsightQuery>(payloadJson);
+                request ??= new InsightQuery();
+                request = request with
+                {
+                    Days = Math.Clamp(request.Days, 1, 30),
+                    Limit = Math.Clamp(request.Limit, 1, 200),
+                    ProcessName = (request.ProcessName ?? "")[..Math.Min(request.ProcessName?.Length ?? 0, 200)]
+                };
+                var now = DateTimeOffset.Now;
+                var from = now.AddDays(-request.Days);
+                var events = _historyStore.Inner.IsUsable
+                    ? await _historyStore.Inner.QueryEventsAsync(from, now, 1000, cancellationToken)
+                    : await QueryEventsAsync(1000, cancellationToken);
+                var points = await _historyStore.Inner.QueryProcessSeriesAsync(from, now, cancellationToken);
+                var behaviors = _behaviorAnalyzer.Analyze(points);
+                var ports = await _historyStore.Inner.QueryPortActivityAsync(from, now, cancellationToken);
+                var connections = await _historyStore.Inner.QueryConnectionsAsync(new(from, now, "", 500), cancellationToken);
+                var insights = InsightGenerator.Generate(request, now, events, behaviors, ports, connections);
+                return CollectorProtocol.Serialize(insights);
+            }
+
             case CollectorProtocol.OpPing:
                 return "pong";
 
@@ -152,7 +199,7 @@ public sealed class CollectorHost : IAsyncDisposable
                     try { request = CollectorProtocol.Deserialize<EventsRequest>(payloadJson); }
                     catch { request = null; }
                 }
-                var limit = Math.Clamp(request?.Limit ?? 100, 1, 500);
+                var limit = Math.Clamp(request?.Limit ?? 100, 1, 1000);
                 var events = await QueryEventsAsync(limit, cancellationToken);
                 return CollectorProtocol.Serialize(events.Select(CollectorDtos.ToDto).ToArray());
             }
@@ -409,6 +456,23 @@ public sealed class CollectorHost : IAsyncDisposable
 
         public ValueTask AppendEventAsync(PerformanceEvent evt, CancellationToken cancellationToken = default) =>
             _isEnabled() ? Inner.AppendEventAsync(evt, cancellationToken) : ValueTask.CompletedTask;
+
+        public ValueTask AppendCollectorHealthAsync(CollectorHealthSnapshot sample, CancellationToken cancellationToken = default) =>
+            _isEnabled() ? Inner.AppendCollectorHealthAsync(sample, cancellationToken) : ValueTask.CompletedTask;
+
+        public ValueTask<IReadOnlyList<CollectorHealthSnapshot>> QueryCollectorHealthAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default) =>
+            Inner.QueryCollectorHealthAsync(from, to, cancellationToken);
+
+        public ValueTask<IReadOnlyList<ProcessHistoryPoint>> QueryProcessSeriesAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default) =>
+            Inner.QueryProcessSeriesAsync(from, to, cancellationToken);
+
+        public ValueTask<IReadOnlyList<PortActivitySummary>> QueryPortActivityAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default) =>
+            Inner.QueryPortActivityAsync(from, to, cancellationToken);
+
+        public ValueTask AppendConnectionAsync(TcpConnectionRecord connection, CancellationToken cancellationToken = default) =>
+            _isEnabled() ? Inner.AppendConnectionAsync(connection, cancellationToken) : ValueTask.CompletedTask;
+        public ValueTask<IReadOnlyList<TcpConnectionRecord>> QueryConnectionsAsync(ConnectionQuery query, CancellationToken cancellationToken = default) =>
+            Inner.QueryConnectionsAsync(query, cancellationToken);
 
         public ValueTask AppendPortSessionAsync(PortSessionRecord session, CancellationToken cancellationToken = default) =>
             _isEnabled() ? Inner.AppendPortSessionAsync(session, cancellationToken) : ValueTask.CompletedTask;

@@ -22,6 +22,32 @@ public sealed class CollectorClient : ICollectorClient
         _timeout = timeout ?? TimeSpan.FromSeconds(1.5);
     }
 
+    public async ValueTask<IReadOnlyList<TcpConnectionRecord>> QueryConnectionsAsync(ConnectionQuery query, CancellationToken cancellationToken = default)
+    {
+        var payload = await RequestAsync(CollectorProtocol.OpConnections, CollectorProtocol.Serialize(query), cancellationToken);
+        if (payload is null) return [];
+        try { return CollectorProtocol.Deserialize<TcpConnectionRecord[]>(payload) ?? []; }
+        catch { return []; }
+    }
+
+    public async ValueTask<CollectorHealthSnapshot?> GetCollectorHealthAsync(CancellationToken cancellationToken = default)
+    {
+        var payload = await RequestAsync(CollectorProtocol.OpHealth, null, cancellationToken);
+        if (payload is null) return null;
+        try { return CollectorProtocol.Deserialize<CollectorHealthSnapshot>(payload); }
+        catch { return null; }
+    }
+
+    public async ValueTask<IReadOnlyList<InsightItem>> GetInsightsAsync(InsightQuery query, CancellationToken cancellationToken = default)
+    {
+        // 30 天分析需要读取分桶历史，允许比实时轮询更长的本地 IPC 时间预算。
+        var payload = await RequestAsync(CollectorProtocol.OpInsights, CollectorProtocol.Serialize(query), cancellationToken,
+            TimeSpan.FromSeconds(Math.Max(15, _timeout.TotalSeconds)));
+        if (payload is null) return [];
+        try { return CollectorProtocol.Deserialize<InsightItem[]>(payload) ?? []; }
+        catch { return []; }
+    }
+
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     public async ValueTask<bool> IsAvailableAsync(CancellationToken cancellationToken = default)
@@ -84,7 +110,7 @@ public sealed class CollectorClient : ICollectorClient
     public async ValueTask<IReadOnlyList<PerformanceEvent>> GetRecentEventsAsync(int limit = 100, CancellationToken cancellationToken = default)
     {
         var payload = await RequestAsync(CollectorProtocol.OpEvents,
-            CollectorProtocol.Serialize(new EventsRequest(Math.Clamp(limit, 1, 500))), cancellationToken);
+            CollectorProtocol.Serialize(new EventsRequest(Math.Clamp(limit, 1, 1000))), cancellationToken);
         if (payload is null) return [];
         try
         {
@@ -162,11 +188,12 @@ public sealed class CollectorClient : ICollectorClient
         catch { return []; }
     }
 
-    private async ValueTask<string?> RequestAsync(string op, string? payloadJson, CancellationToken cancellationToken)
+    private async ValueTask<string?> RequestAsync(string op, string? payloadJson, CancellationToken cancellationToken,
+        TimeSpan? timeout = null)
     {
         using var client = new NamedPipeClientStream(".", _pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        linked.CancelAfter(_timeout);
+        linked.CancelAfter(timeout ?? _timeout);
         try
         {
             await client.ConnectAsync(linked.Token);
