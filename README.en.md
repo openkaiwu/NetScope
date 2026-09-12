@@ -118,11 +118,11 @@ The port registry data can be refreshed from the official IANA registry via `scr
 
 ## V0.5–V0.6 self-monitoring, behavior analysis and Insights (local development build)
 
-- Collector self-monitoring reports its CPU, working set, disk I/O and sampling-cycle duration. Sustained budget violations move sampling through Normal → Reduced → Minimal; hysteresis restores one level at a time, and transitions are recorded locally.
+- Collector self-monitoring reports CPU, private committed memory, working set, disk I/O and sampling-cycle duration. The memory guard uses process-private commit so shared .NET code pages do not cause false throttling. Sustained budget violations move sampling through Normal → Reduced → Minimal.
 - Process, event, connection and Insights lists use recycling virtualization. Executable metadata and signature checks remain asynchronous and cached after the user selects a process.
 - Memory-growth analysis keeps process instances separate by PID and start time, combining observation span, total growth, slope, R² and non-decreasing samples. It does not present a trend as proof of a leak.
 - Periodic behavior analysis extracts CPU/I/O activity episodes from dynamic baselines and scores regularity by mean interval and coefficient of variation; continuous load and irregular bursts stay unclassified.
-- The Insights page summarizes 7/14/30-day lag marks, recurring events, memory trends, periodic behavior, port sessions and remote connections. Filters cover process, time window and type; “View raw evidence” routes to the source event, process curve or filtered connection table.
+- The Insights page summarizes 7/14/30-day lag marks, recurring events, memory trends, periodic behavior, port sessions and remote connections. Trend findings retain PID, process start time and the original analysis window, so “View raw evidence” can reopen that exact instance's CPU, private-memory and I/O curves.
 - The SQLite native runtime is pinned to `SQLitePCLRaw.lib.e_sqlite3 2.1.13`, replacing 2.1.10, which carries a high-severity advisory.
 
 See the [V0.5–V0.6 implementation notes](docs/V0.5-V0.6实现说明.md). The local code version is 0.6.0; this work does not create a GitHub release.

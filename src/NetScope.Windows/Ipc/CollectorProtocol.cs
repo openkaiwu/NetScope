@@ -7,9 +7,9 @@ namespace NetScope.Windows.Ipc;
 /// <summary>Collector 与 App 之间命名管道协议：常量、线上 DTO 与 Core 模型映射。</summary>
 public static class CollectorProtocol
 {
-    public const string PipeName = "NetScope.Collector.v3";
-    public const string LocalMutexName = @"Local\NetScope.Collector.v3";
-    public const int ProtocolVersion = 2;
+    public const string PipeName = "NetScope.Collector.v4";
+    public const string LocalMutexName = @"Local\NetScope.Collector.v4";
+    public const int ProtocolVersion = 3;
     public const string ServerVersion = "0.6.0";
     public const int MaxMessageBytes = 2 * 1024 * 1024;
 

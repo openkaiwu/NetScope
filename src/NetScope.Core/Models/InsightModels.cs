@@ -7,10 +7,12 @@ public sealed record SamplingProfile(SamplingMode Mode, int PerformanceIntervalM
 
 public sealed record CollectorHealthSnapshot(DateTimeOffset Timestamp, double CpuPercent,
     long WorkingSetBytes, long ReadBytesPerSecond, long WriteBytesPerSecond,
-    double CycleDurationMilliseconds, SamplingProfile Profile, IReadOnlyList<string> Reasons);
+    double CycleDurationMilliseconds, SamplingProfile Profile, IReadOnlyList<string> Reasons,
+    long PrivateBytes = 0);
 
 public sealed record CollectorUsageReading(DateTimeOffset Timestamp, double CpuPercent,
-    long WorkingSetBytes, long ReadBytesPerSecond, long WriteBytesPerSecond);
+    long WorkingSetBytes, long ReadBytesPerSecond, long WriteBytesPerSecond,
+    long PrivateBytes = 0);
 
 public enum ProcessBehaviorKind { MemoryGrowth, PeriodicActivity }
 
@@ -20,7 +22,7 @@ public sealed record ProcessHistoryPoint(string ProcessName, DateTimeOffset Time
 
 public sealed record ProcessBehaviorFinding(ProcessBehaviorKind Kind, string ProcessName,
     DateTimeOffset From, DateTimeOffset To, int Confidence, string Title, string Summary,
-    IReadOnlyList<string> Evidence);
+    IReadOnlyList<string> Evidence, int ProcessId = 0, DateTimeOffset? ProcessStartedAt = null);
 
 public enum InsightKind
 {
@@ -37,7 +39,9 @@ public sealed record InsightQuery(int Days = 30, string ProcessName = "",
 
 public sealed record InsightItem(Guid Id, InsightKind Kind, string Title, string Summary,
     int Confidence, DateTimeOffset From, DateTimeOffset To, string? ProcessName,
-    IReadOnlyList<string> Evidence, IReadOnlyList<Guid> SourceEventIds);
+    IReadOnlyList<string> Evidence, IReadOnlyList<Guid> SourceEventIds,
+    int ProcessId = 0, DateTimeOffset? ProcessStartedAt = null,
+    int Port = 0, PortProtocol? Protocol = null);
 
 public sealed record PortActivitySummary(int Port, PortProtocol Protocol, string ProcessName,
     int SessionCount, double TotalSeconds, DateTimeOffset LastSeenAt);

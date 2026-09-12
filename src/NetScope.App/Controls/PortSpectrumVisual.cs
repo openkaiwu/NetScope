@@ -81,7 +81,8 @@ public sealed class PortSpectrumVisual : DrawingVisualHost
     private static void DrawLabel(DrawingContext context, string text, double x, double y, TextAlignment alignment)
     {
         var formatted = new FormattedText(text, System.Globalization.CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
-            new Typeface("Segoe UI Variable Text"), 10, new SolidColorBrush(Color.FromRgb(102, 112, 133)), 1.0) { TextAlignment = alignment };
+            new Typeface("Segoe UI Variable Text"), 10, new SolidColorBrush(Color.FromRgb(102, 112, 133)), 1.0)
+        { TextAlignment = alignment };
         context.DrawText(formatted, new Point(x, y));
     }
 }

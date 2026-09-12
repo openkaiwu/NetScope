@@ -22,7 +22,8 @@ public sealed class WindowsPortAvailabilityProbe : IPortAvailabilityProbe
         try
         {
             using var socket = new Socket(family, protocol == PortProtocol.Tcp ? SocketType.Stream : SocketType.Dgram,
-                protocol == PortProtocol.Tcp ? ProtocolType.Tcp : ProtocolType.Udp) { ExclusiveAddressUse = true };
+                protocol == PortProtocol.Tcp ? ProtocolType.Tcp : ProtocolType.Udp)
+            { ExclusiveAddressUse = true };
             socket.Bind(new IPEndPoint(family == AddressFamily.InterNetwork ? IPAddress.Any : IPAddress.IPv6Any, port));
             return true;
         }

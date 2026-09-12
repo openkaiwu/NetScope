@@ -74,23 +74,28 @@ public sealed class CollectorProtocolTests
     [Fact]
     public void V06HealthAndInsightsRoundTripWithoutLosingEvidence()
     {
-        Assert.Equal(2, CollectorProtocol.ProtocolVersion);
+        Assert.Equal(3, CollectorProtocol.ProtocolVersion);
         Assert.Equal("0.6.0", CollectorProtocol.ServerVersion);
-        Assert.Contains("v3", CollectorProtocol.PipeName, StringComparison.Ordinal);
+        Assert.Contains("v4", CollectorProtocol.PipeName, StringComparison.Ordinal);
 
         var at = DateTimeOffset.Parse("2026-08-31T12:00:00+08:00");
         var health = new CollectorHealthSnapshot(at, 0.25, 40_000_000, 100, 200, 15,
-            new(SamplingMode.Normal, 1000, 2000, 25), ["证据"]);
+            new(SamplingMode.Normal, 1000, 2000, 25), ["证据"], 25_000_000);
         var restoredHealth = CollectorProtocol.Deserialize<CollectorHealthSnapshot>(CollectorProtocol.Serialize(health));
         Assert.NotNull(restoredHealth);
         Assert.Equal("证据", Assert.Single(restoredHealth.Reasons));
+        Assert.Equal(25_000_000, restoredHealth.PrivateBytes);
 
         var sourceId = Guid.NewGuid();
         var insight = new InsightItem(Guid.NewGuid(), InsightKind.LagSummary, "标题", "摘要", 85,
-            at.AddDays(-1), at, "app.exe", ["证据一", "证据二"], [sourceId]);
+            at.AddDays(-1), at, "app.exe", ["证据一", "证据二"], [sourceId], 42, at.AddHours(-3), 8080, PortProtocol.Tcp);
         var restored = Assert.Single(CollectorProtocol.Deserialize<InsightItem[]>(CollectorProtocol.Serialize(new[] { insight }))!);
         Assert.Equal(InsightKind.LagSummary, restored.Kind);
         Assert.Equal(2, restored.Evidence.Count);
         Assert.Equal(sourceId, Assert.Single(restored.SourceEventIds));
+        Assert.Equal(42, restored.ProcessId);
+        Assert.Equal(at.AddHours(-3), restored.ProcessStartedAt);
+        Assert.Equal(8080, restored.Port);
+        Assert.Equal(PortProtocol.Tcp, restored.Protocol);
     }
 }

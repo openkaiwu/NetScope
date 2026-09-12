@@ -69,6 +69,23 @@ public sealed class V06StorageTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ProcessChartHistoryIsBoundedAndKeepsRequestedInstance()
+    {
+        var at = new DateTimeOffset(2026, 8, 1, 12, 0, 0, TimeSpan.Zero);
+        var key = new ProcessInstanceKey(42, at.AddHours(-1));
+        for (var i = 0; i < 1_200; i++)
+            await _store.AppendProcessSampleAsync(Sample(key, at.AddSeconds(i), "chart.exe", i % 100, 100 + i));
+        await _store.FlushNowAsync();
+
+        var rows = await _store.QueryProcessAsync(key, at, at.AddSeconds(1_199));
+
+        Assert.InRange(rows.Count, 1, 900);
+        Assert.All(rows, row => Assert.Equal(key, row.Process));
+        Assert.True(rows[0].Timestamp < rows[^1].Timestamp);
+        Assert.True(rows[^1].PrivateBytes > rows[0].PrivateBytes);
+    }
+
+    [Fact]
     public async Task RetentionDeletesExpiredCollectorHealth()
     {
         var old = DateTimeOffset.Now.AddDays(-3);

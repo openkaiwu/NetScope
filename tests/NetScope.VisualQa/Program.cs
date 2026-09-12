@@ -124,6 +124,22 @@ internal static class Program
         performance.IsInsightsSelected = true;
         Render(performance, 1140, 720, Path.Combine(output, "netscope-insights-v060.png"));
         Render(performance, 860, 580, Path.Combine(output, "netscope-insights-compact-v060.png"));
+
+        var trendInsight = performance.Insights.First(x => x.Item.Kind == InsightKind.MemoryGrowth);
+        performance.OpenInsightSourceCommand.ExecuteAsync(trendInsight).GetAwaiter().GetResult();
+        if (!performance.ProcessHistoryTitle.StartsWith("洞察原始窗口", StringComparison.Ordinal) ||
+            performance.ProcessMemoryHistory.Count is 0 or > 900)
+            throw new InvalidOperationException("Trend insight did not reopen its exact process history window");
+        Render(performance, 1140, 720, Path.Combine(output, "netscope-insight-process-evidence-v060.png"));
+
+        performance.IsProcessesSelected = false;
+        performance.IsInsightsSelected = true;
+        var portInsight = performance.Insights.First(x => x.Item.Kind == InsightKind.PortActivity);
+        performance.OpenInsightSourceCommand.ExecuteAsync(portInsight).GetAwaiter().GetResult();
+        if (!performance.HasInsightSource || !performance.InsightSourceText.Contains("Tcp/135", StringComparison.Ordinal))
+            throw new InvalidOperationException("Port insight did not reopen its source records");
+        Render(performance, 1140, 720, Path.Combine(output, "netscope-insight-port-evidence-v060.png"));
+
         performance.IsInsightsSelected = false;
         performance.ShowConnectionsCommand.Execute(null);
         var now = DateTimeOffset.Now;
@@ -132,6 +148,7 @@ internal static class Program
         performance.Connections.Add(new(new TcpConnectionRecord(Guid.NewGuid(), 9460, now.AddHours(-1), "mysqld.exe", IpAddressFamily.IPv6,
             "::1", 3306, "::1", 53120, "CloseWait", now.AddMinutes(-3), now.AddMinutes(-1), now.AddMinutes(-1), "后续快照中消失")));
         performance.ConnectionStatus = "过去 7 天，示例数据：当前连接与历史连接";
+        performance.ConnectionView.Refresh();
         Render(performance, 1140, 720, Path.Combine(output, "netscope-connections-v060.png"));
         performance.ConnectionGroup = "进程";
         Render(performance, 860, 580, Path.Combine(output, "netscope-connections-compact-v060.png"));
@@ -143,8 +160,8 @@ internal static class Program
         var now = DateTimeOffset.Now;
         vm.CollectorConnected = true;
         vm.CollectorStatus = "后台记录运行中";
-        vm.CollectorHealthText = "自监控：Normal · CPU 0.18% · 内存 43.2 MB";
-        vm.CollectorHealthDetail = "读 2.1 KB/s；写 1.0 KB/s；周期耗时 18 ms；当前未触发自动降频";
+        vm.CollectorHealthText = "自监控：Normal · CPU 0.18% · 私有内存 38.6 MB";
+        vm.CollectorHealthDetail = "工作集 72.4 MB；读 2.1 KB/s；写 1.0 KB/s；周期耗时 18 ms；当前未触发自动降频";
         vm.LastUpdateText = $"更新于 {now:HH:mm:ss}";
         vm.ResponsivenessText = "响应性 88/100 · 较流畅";
         vm.DiskText = "磁盘合计 · 读 2.3 ms / 写 4.1 ms · 队列 0.20 · 活跃 24%";
@@ -219,12 +236,18 @@ internal static class Program
         vm.Insights.Add(new(new InsightItem(Guid.NewGuid(), InsightKind.MemoryGrowth,
             "cloudsync.exe 内存呈持续增长趋势", "观察期内私有内存约增加 486 MB，可能存在泄漏或持续缓存", 88,
             now.AddHours(-8), now, "cloudsync.exe",
-            ["线性趋势 1.0 MB/分钟，拟合度 R²=0.91", "非下降采样占比 82%，样本 96 条", "趋势不能单独证明内存泄漏"], [])));
+            ["线性趋势 1.0 MB/分钟，拟合度 R²=0.91", "非下降采样占比 82%，样本 96 条", "趋势不能单独证明内存泄漏"], [],
+            18420, now.AddDays(-2))));
         vm.Insights.Add(new(new InsightItem(Guid.NewGuid(), InsightKind.PeriodicActivity,
             "updater.exe 出现周期性后台活动", "检测到 9 次活动，平均约每 20 分钟一次", 82,
             now.AddHours(-3), now, "updater.exe",
-            ["周期离散系数 0.08（越低越规律）", "活动阈值 CPU 8.1% 或 I/O 1.0 MB/s"], [])));
-        vm.InsightStatus = "基于最近 30 天本地历史生成 3 条；结论可回查，不代表确定因果";
+            ["周期离散系数 0.08（越低越规律）", "活动阈值 CPU 8.1% 或 I/O 1.0 MB/s"], [],
+            20516, now.AddHours(-12))));
+        vm.Insights.Add(new(new InsightItem(Guid.NewGuid(), InsightKind.PortActivity,
+            "svchost.exe 的监听端口活动较多", "记录 7 个占用会话，最常见 Tcp/135", 62,
+            now.AddDays(-7), now, "svchost.exe",
+            ["端口会话 7 个", "端口出现频繁不代表风险或异常"], [], Port: 135, Protocol: PortProtocol.Tcp)));
+        vm.InsightStatus = "基于最近 30 天本地历史生成 4 条；结论可回查，不代表确定因果";
     }
 
     private static ProcessPerformanceSample SampleProc(ProcessInstanceKey key, string name, double cpu, long ws, long readBps, long writeBps, bool foreground)
@@ -357,6 +380,10 @@ internal static class Program
         view.Measure(new Size(width, height));
         view.Arrange(new Rect(0, 0, width, height));
         view.UpdateLayout();
+        // RenderTargetBitmap 没有真实窗口的滚动视口，DataGrid 行虚拟化可能把可见行也延迟创建。
+        // 截图夹具只关闭这次离屏渲染的虚拟化；产品 XAML 仍保持回收式虚拟化。
+        DisableDataGridVirtualization(view);
+        view.UpdateLayout();
 
         var bitmap = new RenderTargetBitmap((int)Math.Ceiling(width), (int)Math.Ceiling(height), 96, 96, PixelFormats.Pbgra32);
         bitmap.Render(view);
@@ -364,6 +391,17 @@ internal static class Program
         encoder.Frames.Add(BitmapFrame.Create(bitmap));
         using var stream = File.Create(path);
         encoder.Save(stream);
+    }
+
+    private static void DisableDataGridVirtualization(DependencyObject root)
+    {
+        if (root is System.Windows.Controls.DataGrid grid)
+        {
+            grid.EnableRowVirtualization = false;
+            grid.EnableColumnVirtualization = false;
+        }
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+            DisableDataGridVirtualization(VisualTreeHelper.GetChild(root, index));
     }
 
     private static void Populate(DiagnosticViewModel viewModel)

@@ -32,7 +32,7 @@ public sealed class CollectorSelfMonitor : ICollectorSelfMonitor, IDisposable
         var read = elapsed > 0 ? (long)Math.Min(long.MaxValue, readDelta / elapsed) : 0;
         var write = elapsed > 0 ? (long)Math.Min(long.MaxValue, writeDelta / elapsed) : 0;
         _lastAt = now; _lastCpu = cpu; _lastRead = io.ReadTransferCount; _lastWrite = io.WriteTransferCount;
-        return new(now, cpuPercent, _process.WorkingSet64, read, write);
+        return new(now, cpuPercent, _process.WorkingSet64, read, write, _process.PrivateMemorySize64);
     }
 
     public void Dispose() => _process.Dispose();

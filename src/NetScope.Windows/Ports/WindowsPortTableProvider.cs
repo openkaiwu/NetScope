@@ -68,12 +68,12 @@ public sealed class WindowsPortTableProvider : IPortTableProvider
     private static void AddTcp4(ImmutableArray<PortBindingSnapshot>.Builder rows, MibTcpRowOwnerPid row, DateTimeOffset now) =>
         rows.Add(Create(PortProtocol.Tcp, IpAddressFamily.IPv4, new IPAddress(row.LocalAddr).ToString(),
             DecodePort(row.LocalPort), unchecked((int)row.OwningPid), TcpState(row.State), now) with
-            { RemoteAddress = new IPAddress(row.RemoteAddr).ToString(), RemotePort = DecodePort(row.RemotePort) });
+        { RemoteAddress = new IPAddress(row.RemoteAddr).ToString(), RemotePort = DecodePort(row.RemotePort) });
 
     private static void AddTcp6(ImmutableArray<PortBindingSnapshot>.Builder rows, MibTcp6RowOwnerPid row, DateTimeOffset now) =>
         rows.Add(Create(PortProtocol.Tcp, IpAddressFamily.IPv6, new IPAddress(row.LocalAddr, row.LocalScopeId).ToString(),
             DecodePort(row.LocalPort), unchecked((int)row.OwningPid), TcpState(row.State), now) with
-            { RemoteAddress = new IPAddress(row.RemoteAddr, row.RemoteScopeId).ToString(), RemotePort = DecodePort(row.RemotePort) });
+        { RemoteAddress = new IPAddress(row.RemoteAddr, row.RemoteScopeId).ToString(), RemotePort = DecodePort(row.RemotePort) });
 
     private static void AddUdp4(ImmutableArray<PortBindingSnapshot>.Builder rows, MibUdpRowOwnerPid row, DateTimeOffset now) =>
         rows.Add(Create(PortProtocol.Udp, IpAddressFamily.IPv4, new IPAddress(row.LocalAddr).ToString(),
@@ -90,9 +90,19 @@ public sealed class WindowsPortTableProvider : IPortTableProvider
 
     private static string TcpState(uint state) => state switch
     {
-        1 => "Closed", 2 => "Listen", 3 => "SynSent", 4 => "SynReceived", 5 => "Established",
-        6 => "FinWait1", 7 => "FinWait2", 8 => "CloseWait", 9 => "Closing", 10 => "LastAck",
-        11 => "TimeWait", 12 => "DeleteTcb", _ => "Unknown"
+        1 => "Closed",
+        2 => "Listen",
+        3 => "SynSent",
+        4 => "SynReceived",
+        5 => "Established",
+        6 => "FinWait1",
+        7 => "FinWait2",
+        8 => "CloseWait",
+        9 => "Closing",
+        10 => "LastAck",
+        11 => "TimeWait",
+        12 => "DeleteTcb",
+        _ => "Unknown"
     };
 
     [DllImport("iphlpapi.dll", SetLastError = true)]

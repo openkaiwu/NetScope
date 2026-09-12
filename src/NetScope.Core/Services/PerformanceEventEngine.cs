@@ -227,7 +227,7 @@ public sealed class PerformanceEventEngine : IPerformanceEventEngine
     {
         EndedAt = now,
         Status = PerformanceEventStatus.Closed,
-        Evidence = [headline, ..active.Evidence],
+        Evidence = [headline, .. active.Evidence],
         Confidence = Math.Max(active.Confidence, Math.Min(90, active.Confidence + Math.Min(10, sustainedSeconds / 10)))
     };
 
@@ -258,9 +258,15 @@ public sealed class PerformanceEventEngine : IPerformanceEventEngine
         {
             if (state.ActiveEvent is { } active)
             {
-                active = active with { Evidence = state.LatestEvidence, MostLikelyCause = state.LatestCause,
-                    Contributors = state.LatestContributors, Confidence = state.LatestConfidence,
-                    PrimaryProcess = state.LatestPrimary?.Process, PrimaryProcessName = state.LatestPrimary?.Name };
+                active = active with
+                {
+                    Evidence = state.LatestEvidence,
+                    MostLikelyCause = state.LatestCause,
+                    Contributors = state.LatestContributors,
+                    Confidence = state.LatestConfidence,
+                    PrimaryProcess = state.LatestPrimary?.Process,
+                    PrimaryProcessName = state.LatestPrimary?.Name
+                };
                 var seconds = (int)Math.Max(1, (now - state.ConditionSince!.Value).TotalSeconds);
                 output.Add(closeEvent(active, seconds));
                 state.ActiveEvent = null;

@@ -146,6 +146,8 @@ public sealed partial class PerformanceViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _insightSearch = "";
     [ObservableProperty] private string _insightKindFilter = "全部";
     [ObservableProperty] private string _insightStatus = "";
+    [ObservableProperty] private string _insightSourceText = "";
+    [ObservableProperty] private bool _hasInsightSource;
     private bool _loadingInsights;
     public int[] InsightDayOptions { get; } = [7, 14, 30];
     public string[] InsightKindOptions { get; } = ["全部", "卡顿统计", "重复事件", "内存趋势", "周期行为", "端口活动", "连接活动"];
@@ -177,7 +179,8 @@ public sealed partial class PerformanceViewModel : ObservableObject, IDisposable
         catch (Exception) { ConnectionStatus = "连接查询失败，请稍后重试"; }
         finally { _loadingConnections = false; }
     }
-    [RelayCommand] private void ShowConnections()
+    [RelayCommand]
+    private void ShowConnections()
     {
         IsInsightsSelected = false; IsOverviewSelected = false; IsEventsSelected = false; IsProcessesSelected = false; IsConnectionsSelected = true;
         _ = LoadConnectionsAsync();
@@ -196,6 +199,8 @@ public sealed partial class PerformanceViewModel : ObservableObject, IDisposable
         if (_loadingInsights) return;
         _loadingInsights = true;
         InsightStatus = "正在分析本机历史…";
+        InsightSourceText = "";
+        HasInsightSource = false;
         try
         {
             var kind = InsightKindFilter switch
@@ -243,6 +248,22 @@ public sealed partial class PerformanceViewModel : ObservableObject, IDisposable
             await LoadConnectionsAsync();
             return;
         }
+        if (item.ProcessId > 0 && item.ProcessStartedAt is { } processStartedAt &&
+            item.Kind is InsightKind.MemoryGrowth or InsightKind.PeriodicActivity)
+        {
+            await OpenInsightProcessHistoryAsync(item, new(item.ProcessId, processStartedAt));
+            return;
+        }
+        if (item.Kind == InsightKind.PortActivity && item.Port > 0 && item.Protocol is { } protocol)
+        {
+            var rows = await _client.QueryPortUsageAsync(item.Port, protocol, item.From, item.To);
+            InsightSourceText = rows.Count > 0
+                ? $"{protocol}/{item.Port} 原始窗口记录：\n" + string.Join("\n", rows.Select(row =>
+                    $"{row.ProcessName} · {row.SessionCount} 次 · 累计 {TimeSpan.FromSeconds(row.TotalSeconds):g} · 最近 {row.LastSeenAt:g}"))
+                : $"{protocol}/{item.Port} 的原始记录已不可用，可能超过保留期或历史记录曾关闭。";
+            HasInsightSource = true;
+            return;
+        }
         if (!string.IsNullOrWhiteSpace(item.ProcessName))
         {
             ProcessSearchText = item.ProcessName;
@@ -266,6 +287,7 @@ public sealed partial class PerformanceViewModel : ObservableObject, IDisposable
     [ObservableProperty] private ProcessImpactRowViewModel? _selectedProcess;
     [ObservableProperty] private string _processSearchText = "";
     [ObservableProperty] private string _processDetailStatus = "";
+    [ObservableProperty] private string _processHistoryTitle = "最近 15 分钟 CPU 趋势";
     [ObservableProperty] private string _processIdentityTitle = "";
     [ObservableProperty] private string _processIdentityPath = "";
     [ObservableProperty] private string _processIdentityPublisher = "";
@@ -289,6 +311,8 @@ public sealed partial class PerformanceViewModel : ObservableObject, IDisposable
     public ObservableCollection<double> EventMemoryHistory { get; } = [];
     public ObservableCollection<double> EventNetworkHistory { get; } = [];
     public ObservableCollection<double> ProcessCpuHistory { get; } = [];
+    public ObservableCollection<double> ProcessMemoryHistory { get; } = [];
+    public ObservableCollection<double> ProcessIoHistory { get; } = [];
     public ObservableCollection<EventCardViewModel> ProcessEvents { get; } = [];
     public ObservableCollection<EventCardViewModel> ProcessWeekEvents { get; } = [];
     public ObservableCollection<ImpactRankRowViewModel> ImpactRanking { get; } = [];
@@ -353,8 +377,9 @@ public sealed partial class PerformanceViewModel : ObservableObject, IDisposable
             var health = await _client.GetCollectorHealthAsync();
             if (health is not null)
             {
-                CollectorHealthText = $"自监控：{health.Profile.Mode} · CPU {health.CpuPercent:0.00}% · 内存 {FormatBytes(health.WorkingSetBytes)}";
-                CollectorHealthDetail = $"读 {FormatBytes(health.ReadBytesPerSecond)}/s；写 {FormatBytes(health.WriteBytesPerSecond)}/s；周期耗时 {health.CycleDurationMilliseconds:0} ms；性能采样 {health.Profile.PerformanceIntervalMilliseconds} ms；端口采样 {health.Profile.PortIntervalMilliseconds} ms" +
+                var privateBytes = health.PrivateBytes > 0 ? health.PrivateBytes : health.WorkingSetBytes;
+                CollectorHealthText = $"自监控：{health.Profile.Mode} · CPU {health.CpuPercent:0.00}% · 私有内存 {FormatBytes(privateBytes)}";
+                CollectorHealthDetail = $"工作集 {FormatBytes(health.WorkingSetBytes)}；读 {FormatBytes(health.ReadBytesPerSecond)}/s；写 {FormatBytes(health.WriteBytesPerSecond)}/s；周期耗时 {health.CycleDurationMilliseconds:0} ms；性能采样 {health.Profile.PerformanceIntervalMilliseconds} ms；端口采样 {health.Profile.PortIntervalMilliseconds} ms" +
                     (health.Reasons.Count > 0 ? $"\n触发原因：{string.Join("；", health.Reasons)}" : "\n当前未触发自动降频");
             }
             else
@@ -506,14 +531,17 @@ public sealed partial class PerformanceViewModel : ObservableObject, IDisposable
     private async Task LoadProcessDetailAsync(ProcessImpactRowViewModel? row)
     {
         ProcessCpuHistory.Clear();
+        ProcessMemoryHistory.Clear();
+        ProcessIoHistory.Clear();
         ProcessEvents.Clear();
         ProcessWeekEvents.Clear();
         ProcessWeekSummary = "";
         ClearProcessIdentity();
         if (row is null) return;
 
+        ProcessHistoryTitle = "最近 15 分钟 CPU 趋势";
         var samples = await _client.QueryProcessHistoryAsync(row.Sample.Process, DateTimeOffset.Now.AddMinutes(-15), DateTimeOffset.Now);
-        foreach (var sample in samples) ProcessCpuHistory.Add(Math.Round(sample.CpuPercent, 1));
+        AddProcessHistory(samples);
         ProcessDetailStatus = samples.Count > 0
             ? $"{row.Name}（PID {row.Pid}）最近 15 分钟采样 {samples.Count} 条"
             : $"{row.Name}（PID {row.Pid}）暂无历史采样（仅保留影响分 Top 进程的历史）";
@@ -527,6 +555,47 @@ public sealed partial class PerformanceViewModel : ObservableObject, IDisposable
 
         await LoadProcessIdentityAsync(row);
         await LoadProcessWeekEventsAsync(row.Name);
+    }
+
+    private async Task OpenInsightProcessHistoryAsync(InsightItem item, ProcessInstanceKey process)
+    {
+        IsInsightsSelected = false;
+        IsConnectionsSelected = false;
+        IsOverviewSelected = false;
+        IsEventsSelected = false;
+        IsProcessesSelected = true;
+        ProcessSearchText = item.ProcessName ?? string.Empty;
+        SelectedProcess = null;
+        ProcessCpuHistory.Clear();
+        ProcessMemoryHistory.Clear();
+        ProcessIoHistory.Clear();
+        ProcessEvents.Clear();
+        ProcessWeekEvents.Clear();
+        ClearProcessIdentity();
+        ProcessHistoryTitle = $"洞察原始窗口 CPU 趋势（{item.From:g} 至 {item.To:g}）";
+
+        var samples = await _client.QueryProcessHistoryAsync(process, item.From, item.To);
+        AddProcessHistory(samples);
+        var name = item.ProcessName ?? $"PID {process.ProcessId}";
+        ProcessDetailStatus = samples.Count > 0
+            ? $"{name}（PID {process.ProcessId}）洞察原始窗口 {item.From:g} 至 {item.To:g}，采样 {samples.Count} 条"
+            : $"{name}（PID {process.ProcessId}）的原始窗口已无样本；可能已超过保留期或历史记录曾关闭";
+    }
+
+    private void AddProcessHistory(IReadOnlyList<ProcessPerformanceSample> samples)
+    {
+        const int maxChartPoints = 900;
+        var indexes = samples.Count <= maxChartPoints
+            ? Enumerable.Range(0, samples.Count)
+            : Enumerable.Range(0, maxChartPoints).Select(index =>
+                (int)Math.Round(index * (samples.Count - 1d) / (maxChartPoints - 1d)));
+        foreach (var index in indexes)
+        {
+            var sample = samples[index];
+            ProcessCpuHistory.Add(Math.Round(sample.CpuPercent, 1));
+            ProcessMemoryHistory.Add(Math.Round(sample.PrivateBytes / 1024.0 / 1024, 1));
+            ProcessIoHistory.Add(Math.Round((sample.ReadBytesPerSecond + sample.WriteBytesPerSecond) / 1024.0 / 1024, 2));
+        }
     }
 
     /// <summary>该进程名过去 7 天关联的性能事件：总数 + 最新若干条（跨 PID 实例按进程名聚合）。</summary>

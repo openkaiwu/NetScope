@@ -64,7 +64,8 @@ public sealed class ProcessBehaviorAnalyzer(ProcessBehaviorAnalyzerOptions? opti
             $"{name} 内存呈持续增长趋势", $"观察期内私有内存约增加 {growth:0} MB，可能存在泄漏或持续缓存",
             [$"线性趋势 {slope:0.0} MB/分钟，拟合度 R²={r2:0.00}",
              $"非下降采样占比 {positiveRatio:P0}，样本 {p.Length} 条，观察 {(p[^1].Timestamp - p[0].Timestamp).TotalMinutes:0} 分钟",
-             "趋势不能单独证明内存泄漏；应用缓存、工作负载增加和多个同名实例也可能造成增长"]);
+             "趋势不能单独证明内存泄漏；应用缓存、工作负载增加和多个同名实例也可能造成增长"],
+            p[^1].ProcessId, p[^1].ProcessStartedAt);
     }
 
     private ProcessBehaviorFinding? AnalyzePeriod(string name, ProcessHistoryPoint[] p)
@@ -97,7 +98,8 @@ public sealed class ProcessBehaviorAnalyzer(ProcessBehaviorAnalyzerOptions? opti
             $"{name} 出现周期性后台活动", $"检测到 {starts.Count} 次活动，平均约每 {FormatPeriod(mean)} 一次",
             [$"周期离散系数 {cv:0.00}（越低越规律），活动阈值 CPU {cpuThreshold:0.0}% 或 I/O {ioThreshold / 1024 / 1024:0.0} MB/s",
              $"活动开始：{string.Join("、", starts.Take(6).Select(x => x.ToString("MM-dd HH:mm")))}",
-             "周期相关性不等于有害行为；更新、同步、索引和遥测都可能形成规律活动"]);
+             "周期相关性不等于有害行为；更新、同步、索引和遥测都可能形成规律活动"],
+            p[^1].ProcessId, p[^1].ProcessStartedAt);
     }
 
     private static bool Valid(ProcessHistoryPoint p) => !string.IsNullOrWhiteSpace(p.ProcessName) &&

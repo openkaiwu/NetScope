@@ -34,7 +34,8 @@ public static class InsightGenerator
         }
         foreach (var finding in behaviors)
             output.Add(Item(finding.Kind == ProcessBehaviorKind.MemoryGrowth ? InsightKind.MemoryGrowth : InsightKind.PeriodicActivity,
-                finding.Title, finding.Summary, finding.Confidence, finding.From, finding.To, finding.ProcessName, finding.Evidence, []));
+                finding.Title, finding.Summary, finding.Confidence, finding.From, finding.To, finding.ProcessName, finding.Evidence, [],
+                finding.ProcessId, finding.ProcessStartedAt));
         foreach (var group in ports.Where(p => p.LastSeenAt >= from).GroupBy(p => p.ProcessName, StringComparer.OrdinalIgnoreCase))
         {
             var count = group.Sum(x => x.SessionCount);
@@ -42,7 +43,8 @@ public static class InsightGenerator
             var top = group.OrderByDescending(x => x.SessionCount).First();
             output.Add(Item(InsightKind.PortActivity, $"{group.Key} 的监听端口活动较多", $"记录 {count} 个占用会话，最常见 {top.Protocol}/{top.Port}",
                 Math.Clamp(45 + count, 45, 80), from, group.Max(x => x.LastSeenAt), group.Key,
-                [$"端口会话 {count} 个，涉及 {group.Select(x => (x.Port, x.Protocol)).Distinct().Count()} 个端口", "端口出现频繁不代表风险或异常"], []));
+                [$"端口会话 {count} 个，涉及 {group.Select(x => (x.Port, x.Protocol)).Distinct().Count()} 个端口", "端口出现频繁不代表风险或异常"], [],
+                port: top.Port, protocol: top.Protocol));
         }
         foreach (var group in connections.Where(c => c.LastSeenAt >= from).GroupBy(c => c.ProcessName, StringComparer.OrdinalIgnoreCase))
         {
@@ -59,8 +61,10 @@ public static class InsightGenerator
     }
 
     private static InsightItem Item(InsightKind kind, string title, string summary, int confidence,
-        DateTimeOffset from, DateTimeOffset to, string? process, IEnumerable<string> evidence, IEnumerable<Guid> ids) =>
-        new(Guid.NewGuid(), kind, title, summary, confidence, from, to, process, evidence.ToArray(), ids.ToArray());
+        DateTimeOffset from, DateTimeOffset to, string? process, IEnumerable<string> evidence, IEnumerable<Guid> ids,
+        int processId = 0, DateTimeOffset? processStartedAt = null, int port = 0, PortProtocol? protocol = null) =>
+        new(Guid.NewGuid(), kind, title, summary, confidence, from, to, process, evidence.ToArray(), ids.ToArray(),
+            processId, processStartedAt, port, protocol);
 
     private static string TypeName(PerformanceEventType type) => type switch
     {

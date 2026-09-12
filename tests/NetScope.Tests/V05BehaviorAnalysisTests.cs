@@ -13,6 +13,8 @@ public sealed class V05BehaviorAnalysisTests
         var points = Enumerable.Range(0, 61).Select(i => Point("leaky.exe", i, 1, 100 + i * 8, 0)).ToArray();
         var finding = Assert.Single(new ProcessBehaviorAnalyzer().Analyze(points), x => x.Kind == ProcessBehaviorKind.MemoryGrowth);
         Assert.Equal("leaky.exe", finding.ProcessName);
+        Assert.Equal(1, finding.ProcessId);
+        Assert.Equal(Start, finding.ProcessStartedAt);
         Assert.InRange(finding.Confidence, 70, 92);
         Assert.Contains(finding.Evidence, x => x.Contains("R²=1.00", StringComparison.Ordinal));
     }

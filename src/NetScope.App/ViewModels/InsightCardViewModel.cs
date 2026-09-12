@@ -23,5 +23,9 @@ public sealed class InsightCardViewModel(InsightItem item)
     public IReadOnlyList<string> Evidence => Item.Evidence;
     public string SourceText => Item.SourceEventIds.Count > 0
         ? $"关联原始事件 {Item.SourceEventIds.Count} 条，可在事件时间线回查"
+        : Item.ProcessId > 0 && Item.ProcessStartedAt is not null
+            ? $"保留进程实例 PID {Item.ProcessId} 与原始时间窗口，可回查 CPU、内存和 I/O 曲线"
+        : Item.Port > 0 && Item.Protocol is not null
+            ? $"保留 {Item.Protocol}/{Item.Port} 与原始时间窗口，可回查端口占用记录"
         : "依据历史分桶样本或端口/连接记录生成";
 }

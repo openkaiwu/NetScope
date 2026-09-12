@@ -134,8 +134,11 @@ public sealed class GatewayDiagnosticProbe : IDiagnosticProbe
         return ProbeResult.Create(Stage, status, started,
             new Dictionary<string, string>
             {
-                ["平均延迟"] = NetworkPerformanceMath.FormatLatency(avg), ["P95"] = NetworkPerformanceMath.FormatLatency(p95),
-                ["抖动"] = NetworkPerformanceMath.FormatLatency(jitter), ["丢包"] = $"{loss:0}%", ["样本"] = sampleCount.ToString()
+                ["平均延迟"] = NetworkPerformanceMath.FormatLatency(avg),
+                ["P95"] = NetworkPerformanceMath.FormatLatency(p95),
+                ["抖动"] = NetworkPerformanceMath.FormatLatency(jitter),
+                ["丢包"] = $"{loss:0}%",
+                ["样本"] = sampleCount.ToString()
             },
             [$"网关响应 {times.Length}/{sampleCount} 次", $"平均 {NetworkPerformanceMath.FormatLatency(avg)} · P95 {NetworkPerformanceMath.FormatLatency(p95)} · 抖动 {NetworkPerformanceMath.FormatLatency(jitter)}"],
             status == DiagnosticStatus.Healthy ? "本地网关可达" : "本地链路可能存在延迟或丢包", status == DiagnosticStatus.Healthy ? .94 : .82,

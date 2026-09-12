@@ -183,9 +183,11 @@ public sealed class SampleCoordinator : IAsyncDisposable
                 {
                     var usage = _selfMonitor.Read();
                     var cycleMs = Stopwatch.GetElapsedTime(cycleStarted).TotalMilliseconds;
-                    _samplingProfile = _selfGuard.Evaluate(usage.CpuPercent, usage.WorkingSetBytes, usage.WriteBytesPerSecond, cycleMs);
+                    var privateBytes = usage.PrivateBytes > 0 ? usage.PrivateBytes : usage.WorkingSetBytes;
+                    _samplingProfile = _selfGuard.Evaluate(usage.CpuPercent, privateBytes, usage.WriteBytesPerSecond, cycleMs);
                     var health = new CollectorHealthSnapshot(usage.Timestamp, usage.CpuPercent, usage.WorkingSetBytes,
-                        usage.ReadBytesPerSecond, usage.WriteBytesPerSecond, cycleMs, _samplingProfile, _selfGuard.LastReasons);
+                        usage.ReadBytesPerSecond, usage.WriteBytesPerSecond, cycleMs, _samplingProfile, _selfGuard.LastReasons,
+                        usage.PrivateBytes);
                     lock (_stateLock) _currentHealth = health;
                     if (_historyStore is not null && _historyEnabled() &&
                         (health.Timestamp - _lastHealthWrite >= TimeSpan.FromSeconds(30) || modeBefore != _samplingProfile.Mode))

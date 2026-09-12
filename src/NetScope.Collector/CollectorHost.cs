@@ -133,45 +133,45 @@ public sealed class CollectorHost : IAsyncDisposable
         switch (op)
         {
             case CollectorProtocol.OpConnections:
-            {
-                var request = payloadJson is null ? null : CollectorProtocol.Deserialize<ConnectionQuery>(payloadJson);
-                if (request is null) return "[]";
-                var query = request with { Limit = Math.Clamp(request.Limit, 1, 500), Search = (request.Search ?? "")[..Math.Min(request.Search?.Length ?? 0, 200)] };
-                var stored = await _historyStore.Inner.QueryConnectionsAsync(query, cancellationToken);
-                var live = _coordinator.Connections;
-                var liveIds = live.Select(c => c.Id).ToHashSet();
-                stored = stored.Select(c => c.EndedAt is null && !liveIds.Contains(c.Id)
-                    ? c with { EndedAt = c.LastSeenAt, EndReason = "观察已中断或记录暂停，后续状态未知" } : c).ToArray();
-                var active = live.Where(c => c.FirstSeenAt <= query.To && c.LastSeenAt >= query.From &&
-                    $"{c.ProcessName} {c.ProcessId} {c.LocalAddress} {c.LocalPort} {c.RemoteAddress} {c.RemotePort}".Contains(query.Search, StringComparison.OrdinalIgnoreCase));
-                return CollectorProtocol.Serialize(active.Concat(stored).DistinctBy(c => c.Id).OrderByDescending(c => c.LastSeenAt).Take(query.Limit).ToArray());
-            }
+                {
+                    var request = payloadJson is null ? null : CollectorProtocol.Deserialize<ConnectionQuery>(payloadJson);
+                    if (request is null) return "[]";
+                    var query = request with { Limit = Math.Clamp(request.Limit, 1, 500), Search = (request.Search ?? "")[..Math.Min(request.Search?.Length ?? 0, 200)] };
+                    var stored = await _historyStore.Inner.QueryConnectionsAsync(query, cancellationToken);
+                    var live = _coordinator.Connections;
+                    var liveIds = live.Select(c => c.Id).ToHashSet();
+                    stored = stored.Select(c => c.EndedAt is null && !liveIds.Contains(c.Id)
+                        ? c with { EndedAt = c.LastSeenAt, EndReason = "观察已中断或记录暂停，后续状态未知" } : c).ToArray();
+                    var active = live.Where(c => c.FirstSeenAt <= query.To && c.LastSeenAt >= query.From &&
+                        $"{c.ProcessName} {c.ProcessId} {c.LocalAddress} {c.LocalPort} {c.RemoteAddress} {c.RemotePort}".Contains(query.Search, StringComparison.OrdinalIgnoreCase));
+                    return CollectorProtocol.Serialize(active.Concat(stored).DistinctBy(c => c.Id).OrderByDescending(c => c.LastSeenAt).Take(query.Limit).ToArray());
+                }
 
             case CollectorProtocol.OpHealth:
                 return _coordinator.CurrentHealth is { } health ? CollectorProtocol.Serialize(health) : null;
 
             case CollectorProtocol.OpInsights:
-            {
-                var request = payloadJson is null ? null : CollectorProtocol.Deserialize<InsightQuery>(payloadJson);
-                request ??= new InsightQuery();
-                request = request with
                 {
-                    Days = Math.Clamp(request.Days, 1, 30),
-                    Limit = Math.Clamp(request.Limit, 1, 200),
-                    ProcessName = (request.ProcessName ?? "")[..Math.Min(request.ProcessName?.Length ?? 0, 200)]
-                };
-                var now = DateTimeOffset.Now;
-                var from = now.AddDays(-request.Days);
-                var events = _historyStore.Inner.IsUsable
-                    ? await _historyStore.Inner.QueryEventsAsync(from, now, 1000, cancellationToken)
-                    : await QueryEventsAsync(1000, cancellationToken);
-                var points = await _historyStore.Inner.QueryProcessSeriesAsync(from, now, cancellationToken);
-                var behaviors = _behaviorAnalyzer.Analyze(points);
-                var ports = await _historyStore.Inner.QueryPortActivityAsync(from, now, cancellationToken);
-                var connections = await _historyStore.Inner.QueryConnectionsAsync(new(from, now, "", 500), cancellationToken);
-                var insights = InsightGenerator.Generate(request, now, events, behaviors, ports, connections);
-                return CollectorProtocol.Serialize(insights);
-            }
+                    var request = payloadJson is null ? null : CollectorProtocol.Deserialize<InsightQuery>(payloadJson);
+                    request ??= new InsightQuery();
+                    request = request with
+                    {
+                        Days = Math.Clamp(request.Days, 1, 30),
+                        Limit = Math.Clamp(request.Limit, 1, 200),
+                        ProcessName = (request.ProcessName ?? "")[..Math.Min(request.ProcessName?.Length ?? 0, 200)]
+                    };
+                    var now = DateTimeOffset.Now;
+                    var from = now.AddDays(-request.Days);
+                    var events = _historyStore.Inner.IsUsable
+                        ? await _historyStore.Inner.QueryEventsAsync(from, now, 1000, cancellationToken)
+                        : await QueryEventsAsync(1000, cancellationToken);
+                    var points = await _historyStore.Inner.QueryProcessSeriesAsync(from, now, cancellationToken);
+                    var behaviors = _behaviorAnalyzer.Analyze(points);
+                    var ports = await _historyStore.Inner.QueryPortActivityAsync(from, now, cancellationToken);
+                    var connections = await _historyStore.Inner.QueryConnectionsAsync(new(from, now, "", 500), cancellationToken);
+                    var insights = InsightGenerator.Generate(request, now, events, behaviors, ports, connections);
+                    return CollectorProtocol.Serialize(insights);
+                }
 
             case CollectorProtocol.OpPing:
                 return "pong";
@@ -180,122 +180,122 @@ public sealed class CollectorHost : IAsyncDisposable
                 return CollectorProtocol.Serialize(CollectorDtos.ToDto(_coordinator.LastPorts));
 
             case CollectorProtocol.OpSystem:
-            {
-                var sample = _coordinator.CurrentSystem;
-                return sample is null ? null : CollectorProtocol.Serialize(CollectorDtos.ToDto(sample));
-            }
+                {
+                    var sample = _coordinator.CurrentSystem;
+                    return sample is null ? null : CollectorProtocol.Serialize(CollectorDtos.ToDto(sample));
+                }
 
             case CollectorProtocol.OpProcesses:
-            {
-                var samples = _coordinator.CurrentProcesses;
-                return CollectorProtocol.Serialize(samples.Select(CollectorDtos.ToDto).ToImmutableArray());
-            }
+                {
+                    var samples = _coordinator.CurrentProcesses;
+                    return CollectorProtocol.Serialize(samples.Select(CollectorDtos.ToDto).ToImmutableArray());
+                }
 
             case CollectorProtocol.OpEvents:
-            {
-                EventsRequest? request = null;
-                if (payloadJson is not null)
                 {
-                    try { request = CollectorProtocol.Deserialize<EventsRequest>(payloadJson); }
-                    catch { request = null; }
+                    EventsRequest? request = null;
+                    if (payloadJson is not null)
+                    {
+                        try { request = CollectorProtocol.Deserialize<EventsRequest>(payloadJson); }
+                        catch { request = null; }
+                    }
+                    var limit = Math.Clamp(request?.Limit ?? 100, 1, 1000);
+                    var events = await QueryEventsAsync(limit, cancellationToken);
+                    return CollectorProtocol.Serialize(events.Select(CollectorDtos.ToDto).ToArray());
                 }
-                var limit = Math.Clamp(request?.Limit ?? 100, 1, 1000);
-                var events = await QueryEventsAsync(limit, cancellationToken);
-                return CollectorProtocol.Serialize(events.Select(CollectorDtos.ToDto).ToArray());
-            }
 
             case CollectorProtocol.OpSystemHistory:
-            {
-                HistoryRequest? request = null;
-                if (payloadJson is not null)
                 {
-                    try { request = CollectorProtocol.Deserialize<HistoryRequest>(payloadJson); }
-                    catch { request = null; }
+                    HistoryRequest? request = null;
+                    if (payloadJson is not null)
+                    {
+                        try { request = CollectorProtocol.Deserialize<HistoryRequest>(payloadJson); }
+                        catch { request = null; }
+                    }
+                    if (request is null) return "[]";
+                    var samples = _historyStore.Inner.IsUsable
+                        ? await _historyStore.Inner.QuerySystemAsync(request.From, request.To, cancellationToken)
+                        : [];
+                    return CollectorProtocol.Serialize(samples.Select(CollectorDtos.ToDto).ToArray());
                 }
-                if (request is null) return "[]";
-                var samples = _historyStore.Inner.IsUsable
-                    ? await _historyStore.Inner.QuerySystemAsync(request.From, request.To, cancellationToken)
-                    : [];
-                return CollectorProtocol.Serialize(samples.Select(CollectorDtos.ToDto).ToArray());
-            }
 
             case CollectorProtocol.OpProcessHistory:
-            {
-                ProcessHistoryRequest? request = null;
-                if (payloadJson is not null)
                 {
-                    try { request = CollectorProtocol.Deserialize<ProcessHistoryRequest>(payloadJson); }
-                    catch { request = null; }
+                    ProcessHistoryRequest? request = null;
+                    if (payloadJson is not null)
+                    {
+                        try { request = CollectorProtocol.Deserialize<ProcessHistoryRequest>(payloadJson); }
+                        catch { request = null; }
+                    }
+                    if (request is null) return "[]";
+                    var key = new ProcessInstanceKey(request.ProcessId, request.StartedAt);
+                    var samples = _historyStore.Inner.IsUsable
+                        ? await _historyStore.Inner.QueryProcessAsync(key, request.From, request.To, cancellationToken)
+                        : [];
+                    return CollectorProtocol.Serialize(samples.Select(CollectorDtos.ToDto).ToArray());
                 }
-                if (request is null) return "[]";
-                var key = new ProcessInstanceKey(request.ProcessId, request.StartedAt);
-                var samples = _historyStore.Inner.IsUsable
-                    ? await _historyStore.Inner.QueryProcessAsync(key, request.From, request.To, cancellationToken)
-                    : [];
-                return CollectorProtocol.Serialize(samples.Select(CollectorDtos.ToDto).ToArray());
-            }
 
             case CollectorProtocol.OpMarkLag:
-            {
-                var evt = await MarkLagAsync(cancellationToken);
-                return CollectorProtocol.Serialize(new MarkLagDto(evt.StartedAt, true));
-            }
+                {
+                    var evt = await MarkLagAsync(cancellationToken);
+                    return CollectorProtocol.Serialize(new MarkLagDto(evt.StartedAt, true));
+                }
 
             case CollectorProtocol.OpPortHistory:
-            {
-                PortHistoryRequest? request = null;
-                if (payloadJson is not null)
                 {
-                    try { request = CollectorProtocol.Deserialize<PortHistoryRequest>(payloadJson); }
-                    catch { request = null; }
+                    PortHistoryRequest? request = null;
+                    if (payloadJson is not null)
+                    {
+                        try { request = CollectorProtocol.Deserialize<PortHistoryRequest>(payloadJson); }
+                        catch { request = null; }
+                    }
+                    if (request is null) return "[]";
+                    var usage = _historyStore.Inner.IsUsable
+                        ? await _historyStore.Inner.QueryPortUsageAsync(
+                            Math.Clamp(request.Port, 0, 65535), (PortProtocol)Math.Clamp(request.Protocol, 0, 1),
+                            request.From, request.To, 20, cancellationToken)
+                        : [];
+                    return CollectorProtocol.Serialize(usage.Select(CollectorDtos.ToDto).ToArray());
                 }
-                if (request is null) return "[]";
-                var usage = _historyStore.Inner.IsUsable
-                    ? await _historyStore.Inner.QueryPortUsageAsync(
-                        Math.Clamp(request.Port, 0, 65535), (PortProtocol)Math.Clamp(request.Protocol, 0, 1),
-                        request.From, request.To, 20, cancellationToken)
-                    : [];
-                return CollectorProtocol.Serialize(usage.Select(CollectorDtos.ToDto).ToArray());
-            }
 
             case CollectorProtocol.OpProcessEvents:
-            {
-                ProcessEventsRequest? request = null;
-                if (payloadJson is not null)
                 {
-                    try { request = CollectorProtocol.Deserialize<ProcessEventsRequest>(payloadJson); }
-                    catch { request = null; }
-                }
-                if (request is null || string.IsNullOrWhiteSpace(request.ProcessName))
-                    return CollectorProtocol.Serialize(new ProcessEventsDto(0, []));
+                    ProcessEventsRequest? request = null;
+                    if (payloadJson is not null)
+                    {
+                        try { request = CollectorProtocol.Deserialize<ProcessEventsRequest>(payloadJson); }
+                        catch { request = null; }
+                    }
+                    if (request is null || string.IsNullOrWhiteSpace(request.ProcessName))
+                        return CollectorProtocol.Serialize(new ProcessEventsDto(0, []));
 
-                var from = DateTimeOffset.Now.AddDays(-Math.Clamp(request.Days, 1, 30));
-                var events = await QueryEventsAsync(1000, cancellationToken);
-                var matching = events
-                    .Where(e => MatchesProcess(e, request.ProcessName))
-                    .OrderByDescending(e => e.StartedAt)
-                    .ToList();
-                var limited = matching
-                    .Take(Math.Clamp(request.Limit, 1, 50))
-                    .Select(CollectorDtos.ToDto)
-                    .ToArray();
-                return CollectorProtocol.Serialize(new ProcessEventsDto(matching.Count, limited));
-            }
+                    var from = DateTimeOffset.Now.AddDays(-Math.Clamp(request.Days, 1, 30));
+                    var events = await QueryEventsAsync(1000, cancellationToken);
+                    var matching = events
+                        .Where(e => MatchesProcess(e, request.ProcessName))
+                        .OrderByDescending(e => e.StartedAt)
+                        .ToList();
+                    var limited = matching
+                        .Take(Math.Clamp(request.Limit, 1, 50))
+                        .Select(CollectorDtos.ToDto)
+                        .ToArray();
+                    return CollectorProtocol.Serialize(new ProcessEventsDto(matching.Count, limited));
+                }
 
             case CollectorProtocol.OpImpactRanking:
-            {
-                ImpactRankingRequest? request = null;
-                if (payloadJson is not null)
                 {
-                    try { request = CollectorProtocol.Deserialize<ImpactRankingRequest>(payloadJson); }
-                    catch { request = null; }
+                    ImpactRankingRequest? request = null;
+                    if (payloadJson is not null)
+                    {
+                        try { request = CollectorProtocol.Deserialize<ImpactRankingRequest>(payloadJson); }
+                        catch { request = null; }
+                    }
+                    var days = Math.Clamp(request?.Days ?? 7, 1, 30);
+                    var events = await QueryEventsAsync(1000, cancellationToken);
+                    var ranking = ImpactRankingCalculator.Rank(events, days)
+                        .Take(Math.Clamp(request?.Limit ?? 10, 1, 50));
+                    return CollectorProtocol.Serialize(ranking.Select(CollectorDtos.ToDto).ToArray());
                 }
-                var days = Math.Clamp(request?.Days ?? 7, 1, 30);
-                var events = await QueryEventsAsync(1000, cancellationToken);
-                var ranking = ImpactRankingCalculator.Rank(events, days)
-                    .Take(Math.Clamp(request?.Limit ?? 10, 1, 50));
-                return CollectorProtocol.Serialize(ranking.Select(CollectorDtos.ToDto).ToArray());
-            }
 
             default:
                 throw new InvalidOperationException($"未知操作: {op}");
@@ -380,7 +380,7 @@ public sealed class CollectorHost : IAsyncDisposable
             windowStart, now, 100,
             "用户反馈的响应迟缓事件",
             causeParts.Count > 0 ? $"标记时刻的分析：{string.Join("；", causeParts)}" : "标记前 60 秒内未采集到足够样本",
-            [..BuildEvidence()],
+            [.. BuildEvidence()],
             ["查看下方事件前后 60 秒的 CPU、内存、I/O 与网络曲线",
              "结合 Top 影响进程的监听端口与连接变化判断",
              "用户标记代表主观感受，不等同于自动确认的故障"],

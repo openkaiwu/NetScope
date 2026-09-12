@@ -21,7 +21,10 @@ public sealed class StatusTextConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture) => value switch
     {
-        DiagnosticStatus.Healthy => "正常", DiagnosticStatus.Degraded => "退化", DiagnosticStatus.Fault => "故障", _ => "未检测"
+        DiagnosticStatus.Healthy => "正常",
+        DiagnosticStatus.Degraded => "退化",
+        DiagnosticStatus.Fault => "故障",
+        _ => "未检测"
     };
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotSupportedException();
 }

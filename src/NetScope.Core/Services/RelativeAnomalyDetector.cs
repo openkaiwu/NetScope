@@ -21,7 +21,7 @@ public sealed class RelativeAnomalyDetector
             if (b.LastAt is { } previous && now - previous < TimeSpan.FromSeconds(1)) continue;
             if (b.LastAt is { } last && now - last > TimeSpan.FromSeconds(5))
             {
-                if (b.Active is { } interrupted) output.Add(interrupted with { Status = PerformanceEventStatus.Closed, EndedAt = last, Evidence = [..interrupted.Evidence, "采样中断，结束时间为最后观察时刻"] });
+                if (b.Active is { } interrupted) output.Add(interrupted with { Status = PerformanceEventStatus.Closed, EndedAt = last, Evidence = [.. interrupted.Evidence, "采样中断，结束时间为最后观察时刻"] });
                 _baselines[p.Process] = b = new();
             }
             b.LastAt = now;
@@ -63,7 +63,7 @@ public sealed class RelativeAnomalyDetector
         foreach (var key in _baselines.Keys.Where(k => !seen.Contains(k)).ToArray())
         {
             if (_baselines[key].Active is { } active)
-                output.Add(active with { Status = PerformanceEventStatus.Closed, EndedAt = now, Evidence = [..active.Evidence, "进程退出或采样不可用"] });
+                output.Add(active with { Status = PerformanceEventStatus.Closed, EndedAt = now, Evidence = [.. active.Evidence, "进程退出或采样不可用"] });
             _baselines.Remove(key);
         }
         return output;

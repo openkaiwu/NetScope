@@ -449,8 +449,12 @@
                                         <TextBlock Text="{Binding ProcessIdentityAdvice}" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" Margin="0,4,0,0"/>
                                     </StackPanel>
                                 </Border>
-                                <TextBlock Text="最近 15 分钟 CPU 趋势" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="2,8,0,4"/>
+                                <TextBlock Text="{Binding ProcessHistoryTitle}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="2,8,0,4" TextWrapping="Wrap"/>
                                 <controls:SparklineVisual Values="{Binding ProcessCpuHistory}" EmptyText="选择进程后显示历史曲线" Height="72"/>
+                                <TextBlock Text="私有内存趋势（MB）" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="2,10,0,4"/>
+                                <controls:SparklineVisual Values="{Binding ProcessMemoryHistory}" EmptyText="暂无内存历史" Height="58"/>
+                                <TextBlock Text="磁盘 I/O 趋势（MB/s）" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="2,10,0,4"/>
+                                <controls:SparklineVisual Values="{Binding ProcessIoHistory}" EmptyText="暂无 I/O 历史" Height="58"/>
                                 <TextBlock Text="{Binding ProcessWeekSummary}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="2,14,0,4"/>
                                 <ItemsControl ItemsSource="{Binding ProcessWeekEvents}" MaxHeight="150">
                                     <ItemsControl.ItemTemplate>
@@ -484,7 +488,7 @@
                 <TextBlock Grid.Row="1" Text="{Binding HistoryNotice}" Foreground="{DynamicResource TextMutedBrush}" FontSize="11" Margin="2,10,0,0"/>
             </Grid>
             <Grid Visibility="{Binding IsInsightsSelected, Converter={StaticResource BoolToVisibility}}">
-                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                 <StackPanel Margin="0,0,0,10">
                     <TextBlock Text="Insights · 可回查洞察" FontSize="20" FontWeight="SemiBold"/>
                     <TextBlock Text="从本机历史样本、性能事件、端口会话和连接记录生成；只排列证据，不下确定因果结论。" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,5,0,8"/>
@@ -495,7 +499,11 @@
                         <TextBox Text="{Binding InsightSearch, UpdateSourceTrigger=PropertyChanged}" ToolTip="筛选进程名"/>
                     </DockPanel>
                 </StackPanel>
-                <ListBox Grid.Row="1" ItemsSource="{Binding Insights}" Background="Transparent" BorderThickness="0"
+                <Border Grid.Row="1" Style="{StaticResource CardStyle}" Padding="10" Margin="0,0,0,8"
+                        Visibility="{Binding HasInsightSource, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock Text="{Binding InsightSourceText}" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                </Border>
+                <ListBox Grid.Row="2" ItemsSource="{Binding Insights}" Background="Transparent" BorderThickness="0"
                          HorizontalContentAlignment="Stretch" ScrollViewer.CanContentScroll="True"
                          VirtualizingStackPanel.IsVirtualizing="True" VirtualizingStackPanel.VirtualizationMode="Recycling">
                     <ListBox.ItemTemplate>
@@ -523,7 +531,7 @@
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
-                <TextBlock Grid.Row="2" Text="{Binding InsightStatus}" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{DynamicResource TextMutedBrush}" FontSize="11"/>
+                <TextBlock Grid.Row="3" Text="{Binding InsightStatus}" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{DynamicResource TextMutedBrush}" FontSize="11"/>
             </Grid>
             <Grid Visibility="{Binding IsConnectionsSelected, Converter={StaticResource BoolToVisibility}}">
                 <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>

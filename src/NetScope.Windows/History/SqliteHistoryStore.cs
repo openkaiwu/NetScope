@@ -261,15 +261,25 @@ public sealed class SqliteHistoryStore : IPerformanceHistoryStore
         await _gate.WaitAsync(cancellationToken);
         try
         {
+            const int maxChartPoints = 900;
+            var spanTicks = Math.Max(1, to.UtcTicks - from.UtcTicks);
+            var bucketTicks = Math.Max(TimeSpan.TicksPerSecond, (spanTicks + maxChartPoints - 1) / maxChartPoints);
             await using var command = _connection!.CreateCommand();
             command.CommandText = """
-                SELECT Timestamp, Name, CpuPercent, WorkingSetBytes, PrivateBytes, ReadBps, WriteBps, ReadOps, WriteOps, IsForeground
-                FROM ProcessSamples WHERE ProcessId = @pid AND StartedAt = @started AND Timestamp >= @from AND Timestamp <= @to ORDER BY Timestamp
+                SELECT MIN(Timestamp), MAX(Name), AVG(CpuPercent),
+                       CAST(AVG(WorkingSetBytes) AS INTEGER), CAST(AVG(PrivateBytes) AS INTEGER),
+                       CAST(AVG(ReadBps) AS INTEGER), CAST(AVG(WriteBps) AS INTEGER),
+                       CAST(AVG(ReadOps) AS INTEGER), CAST(AVG(WriteOps) AS INTEGER), MAX(IsForeground)
+                FROM ProcessSamples
+                WHERE ProcessId = @pid AND StartedAt = @started AND Timestamp >= @from AND Timestamp <= @to
+                GROUP BY ((Timestamp - @from) / @bucket)
+                ORDER BY MIN(Timestamp)
                 """;
             command.Parameters.AddWithValue("@pid", process.ProcessId);
             command.Parameters.AddWithValue("@started", process.StartedAt.UtcTicks);
             command.Parameters.AddWithValue("@from", from.UtcTicks);
             command.Parameters.AddWithValue("@to", to.UtcTicks);
+            command.Parameters.AddWithValue("@bucket", bucketTicks);
 
             var result = new List<ProcessPerformanceSample>();
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);

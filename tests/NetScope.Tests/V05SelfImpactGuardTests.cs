@@ -91,6 +91,8 @@ public sealed class V05SelfImpactGuardTests
         Assert.True(double.IsFinite(reading.CpuPercent));
         Assert.InRange(reading.CpuPercent, 0, 100);
         Assert.True(reading.WorkingSetBytes > 0);
+        Assert.True(reading.PrivateBytes > 0);
+        Assert.True(reading.PrivateBytes <= reading.WorkingSetBytes * 2);
         Assert.True(reading.ReadBytesPerSecond >= 0);
         Assert.True(reading.WriteBytesPerSecond >= 0);
     }

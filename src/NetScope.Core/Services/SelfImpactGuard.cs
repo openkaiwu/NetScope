@@ -6,8 +6,8 @@ public sealed record SelfImpactGuardOptions
 {
     public double CpuHighPercent { get; init; } = 1.0;
     public double CpuSeverePercent { get; init; } = 3.0;
-    public long MemoryHighBytes { get; init; } = 80L * 1024 * 1024;
-    public long MemorySevereBytes { get; init; } = 160L * 1024 * 1024;
+    public long MemoryHighBytes { get; init; } = 50L * 1024 * 1024;
+    public long MemorySevereBytes { get; init; } = 100L * 1024 * 1024;
     public long WriteHighBytesPerSecond { get; init; } = 4 * 1024;
     public long WriteSevereBytesPerSecond { get; init; } = 32 * 1024;
     public double CycleHighMilliseconds { get; init; } = 500;
@@ -26,16 +26,16 @@ public sealed class SelfImpactGuard(SelfImpactGuardOptions? options = null)
     public SamplingMode Mode { get; private set; }
     public IReadOnlyList<string> LastReasons { get; private set; } = [];
 
-    public SamplingProfile Evaluate(double cpuPercent, long workingSetBytes, long writeBytesPerSecond,
+    public SamplingProfile Evaluate(double cpuPercent, long privateBytes, long writeBytesPerSecond,
         double cycleDurationMilliseconds)
     {
-        var high = cpuPercent > _options.CpuHighPercent || workingSetBytes > _options.MemoryHighBytes ||
+        var high = cpuPercent > _options.CpuHighPercent || privateBytes > _options.MemoryHighBytes ||
                    writeBytesPerSecond > _options.WriteHighBytesPerSecond || cycleDurationMilliseconds > _options.CycleHighMilliseconds;
-        var severe = cpuPercent > _options.CpuSeverePercent || workingSetBytes > _options.MemorySevereBytes ||
+        var severe = cpuPercent > _options.CpuSeverePercent || privateBytes > _options.MemorySevereBytes ||
                      writeBytesPerSecond > _options.WriteSevereBytesPerSecond || cycleDurationMilliseconds > _options.CycleSevereMilliseconds;
         var reasons = new List<string>();
         if (cpuPercent > _options.CpuHighPercent) reasons.Add($"CPU {cpuPercent:0.00}% 超过 {_options.CpuHighPercent:0.00}% 预算");
-        if (workingSetBytes > _options.MemoryHighBytes) reasons.Add($"内存 {workingSetBytes / 1024.0 / 1024:0.0} MB 超过 {_options.MemoryHighBytes / 1024.0 / 1024:0} MB 预算");
+        if (privateBytes > _options.MemoryHighBytes) reasons.Add($"私有内存 {privateBytes / 1024.0 / 1024:0.0} MB 超过 {_options.MemoryHighBytes / 1024.0 / 1024:0} MB 预算");
         if (writeBytesPerSecond > _options.WriteHighBytesPerSecond) reasons.Add($"磁盘写入 {writeBytesPerSecond / 1024.0:0.0} KB/s 超过预算");
         if (cycleDurationMilliseconds > _options.CycleHighMilliseconds) reasons.Add($"采样周期耗时 {cycleDurationMilliseconds:0} ms 超过预算");
         LastReasons = reasons;

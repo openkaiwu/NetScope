@@ -6,7 +6,7 @@ using NetScope.Windows.Ipc;
 
 // 用法: NetScope.Repro --server|--client --mode=wrappers|raw|unidir|roundtrip|collector
 // roundtrip 模式：在本进程内同时启动真实 CollectorIpcServer 与 CollectorClient，逐段追踪定位 IPC 失败点。
-// collector 模式：连接真实后台 Collector（NetScope.Collector.v3 管道），全链路冒烟当前协议操作。
+// collector 模式：连接真实后台 Collector（NetScope.Collector.v4 管道），全链路冒烟当前协议操作。
 var role = args.Contains("--server") ? "server" : "client";
 var mode = args.FirstOrDefault(a => a.StartsWith("--mode="))?.Split('=')[1] ?? "wrappers";
 
@@ -41,7 +41,7 @@ if (mode == "collector")
     Console.WriteLine($"ports: {ports.Length} 条绑定");
 
     var health = await ipcClient.GetCollectorHealthAsync();
-    Console.WriteLine($"health: mode={health?.Profile.Mode}, CPU={health?.CpuPercent:0.00}%, memory={health?.WorkingSetBytes / 1024 / 1024}MB, cycle={health?.CycleDurationMilliseconds:0.0}ms");
+    Console.WriteLine($"health: mode={health?.Profile.Mode}, CPU={health?.CpuPercent:0.00}%, private={health?.PrivateBytes / 1024 / 1024}MB, workingSet={health?.WorkingSetBytes / 1024 / 1024}MB, cycle={health?.CycleDurationMilliseconds:0.0}ms");
 
     var markAccepted = await ipcClient.MarkLagAsync();
     Trace($"collector: markLag={markAccepted}");

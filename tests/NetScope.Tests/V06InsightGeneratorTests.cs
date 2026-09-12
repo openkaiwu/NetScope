@@ -39,13 +39,17 @@ public sealed class V06InsightGeneratorTests
     public void BehaviorPortAndConnectionEvidenceBecomeInsightsAtThresholds()
     {
         var behavior = new ProcessBehaviorFinding(ProcessBehaviorKind.MemoryGrowth, "app.exe", Now.AddHours(-2), Now, 88,
-            "内存增长", "增长摘要", ["原始趋势证据"]);
+            "内存增长", "增长摘要", ["原始趋势证据"], 42, Now.AddHours(-8));
         var ports = new[] { new PortActivitySummary(8080, PortProtocol.Tcp, "app.exe", 3, 300, Now) };
         var connections = Enumerable.Range(1, 5).Select(i => new TcpConnectionRecord(Guid.NewGuid(), 1, Now.AddDays(-1), "app.exe",
             IpAddressFamily.IPv4, "127.0.0.1", 5000 + i, $"192.0.2.{i}", 443, "Closed", Now.AddHours(-i), Now)).ToArray();
         var results = InsightGenerator.Generate(new(), Now, [], [behavior], ports, connections);
-        Assert.Contains(results, x => x.Kind == InsightKind.MemoryGrowth && x.Evidence.Contains("原始趋势证据"));
-        Assert.Contains(results, x => x.Kind == InsightKind.PortActivity);
+        var memory = Assert.Single(results, x => x.Kind == InsightKind.MemoryGrowth && x.Evidence.Contains("原始趋势证据"));
+        Assert.Equal(42, memory.ProcessId);
+        Assert.Equal(Now.AddHours(-8), memory.ProcessStartedAt);
+        var port = Assert.Single(results, x => x.Kind == InsightKind.PortActivity);
+        Assert.Equal(8080, port.Port);
+        Assert.Equal(PortProtocol.Tcp, port.Protocol);
         Assert.Contains(results, x => x.Kind == InsightKind.ConnectionActivity);
     }
 
