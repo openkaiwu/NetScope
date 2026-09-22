@@ -11,3 +11,4 @@ artifacts/*
 *.nupkg
 TestResults/
 design/qa/*.tmp.png
+tmp/
