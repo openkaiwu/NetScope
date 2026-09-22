@@ -32,5 +32,9 @@ public sealed record ImpactRankEntry(
     int LagRelatedCount,
     int Score);
 
-/// <summary>某进程名在时间窗内关联的性能事件汇总。</summary>
-public sealed record ProcessEventsSummary(int TotalCount, IReadOnlyList<PerformanceEvent> Events);
+/// <summary>某进程名在时间窗内关联的性能事件汇总。LagRelatedCount 为其中与用户卡顿标记重合（±90 秒内）的次数。</summary>
+public sealed record ProcessEventsSummary(int TotalCount, IReadOnlyList<PerformanceEvent> Events,
+    int LagRelatedCount = 0, int WindowDays = 7);
+
+/// <summary>时间窗内的采样覆盖度：报告用来声明结论的数据完整程度。</summary>
+public sealed record HistoryCoverage(int SystemSampleCount, int ProcessSampleCount);

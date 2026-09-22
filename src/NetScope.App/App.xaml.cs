@@ -60,7 +60,11 @@ public partial class App : Application
         var performanceTester = new HttpNetworkPerformanceTester();
 
         var port = new PortViewModel(portTable, processResolver, catalog, availability, systemRanges, new PortSnapshotDiffer(), new PortSearchEngine(), settings, fileMetadata, collectorClient);
-        var performance = new PerformanceViewModel(collectorClient ?? new NullCollectorClient(), settings, fileMetadata);
+        // V1.1 受控干预：检查器与执行器只存在于前台 App 进程，不经 Collector IPC 暴露终止能力
+        var terminationInspector = new NetScope.Windows.Intervention.ProcessSafetyInspector(fileMetadata);
+        var performance = new PerformanceViewModel(collectorClient ?? new NullCollectorClient(), settings, fileMetadata,
+            terminationInspector: terminationInspector,
+            terminationExecutor: new NetScope.Windows.Intervention.ProcessTerminationExecutor(terminationInspector));
         var diagnostic = new DiagnosticViewModel(engine, networkSnapshot, performanceTester, settings);
         var settingsVm = new SettingsViewModel(settingsStore, new StartupRegistration(), settings);
         var main = new MainViewModel(port, performance, diagnostic, settingsVm);

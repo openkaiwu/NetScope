@@ -111,12 +111,47 @@ internal static class Program
         performance.SelectedEvent = performance.RecentEvents.FirstOrDefault();
         Render(performance, 1140, 720, Path.Combine(output, "netscope-performance-events-v060.png"));
 
+        // V1.0：事件详情的归因链 + 回放原始证据曲线
+        performance.ReplayEventEvidenceCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        if (performance.EventChainSteps.Count != 5 || !performance.HasEventProcessTrend || performance.EventProcessCpuHistory.Count == 0)
+            throw new InvalidOperationException("Attribution chain or replay curves did not load");
+        Render(performance, 1140, 720, Path.Combine(output, "netscope-performance-attribution-v100.png"));
+
         performance.IsEventsSelected = false;
         performance.IsProcessesSelected = true;
         // 选 svchost：知识库命中 + 7 天事件在同步路径完成，保证截图前数据已就位
         performance.SelectedProcess = performance.TopProcesses.FirstOrDefault(x => x.Name == "svchost.exe")
                                       ?? performance.TopProcesses.FirstOrDefault();
+        // V1.1 结束建议卡片（svchost：强烈不建议，只显示说明与替代建议）
+        performance.TerminationLevelText = "结束建议：强烈不建议";
+        performance.TerminationConclusion = "svchost.exe 承载 Windows 服务，结束会中断这些服务。建议不要直接结束。";
+        performance.TerminationEvidence.Add("当前用户进程");
+        performance.TerminationEvidence.Add("非 Windows 关键进程（已查询关键标志）");
+        performance.TerminationEvidence.Add("签名有效：Microsoft Corporation");
+        performance.TerminationEvidence.Add("承载的服务：WSearch、wuauserv、Dhcp");
+        performance.TerminationAlternatives.Add("在服务管理器中定位该实例承载的服务");
+        performance.TerminationAlternatives.Add("重启对应服务而不是结束宿主");
+        performance.TerminationStatus = "该进程不提供结束操作，请参考替代建议。";
+        performance.HasTerminationAdvice = true;
+        if (!performance.HasTerminationAdvice || performance.TerminationEvidence.Count < 4)
+            throw new InvalidOperationException("Termination advice card did not populate");
         Render(performance, 1140, 720, Path.Combine(output, "netscope-performance-processes-v060.png"));
+
+        // V1.1：可结束进程的建议卡片（谨慎级，显示双按钮）
+        performance.TerminationLevelText = "结束建议：可以结束，但可能中断功能或丢失数据";
+        performance.TerminationConclusion = "存在主窗口，未保存内容可能丢失。";
+        performance.TerminationEvidence.Clear();
+        performance.TerminationEvidence.Add("当前用户进程");
+        performance.TerminationEvidence.Add("非 Windows 关键进程（已查询关键标志）");
+        performance.TerminationEvidence.Add("位于当前会话（Session 1）");
+        performance.TerminationEvidence.Add("签名有效：Microsoft Corporation");
+        performance.TerminationEvidence.Add("监听 2 个端口、5 条活动连接，结束会中断这些服务");
+        performance.TerminationStatus = "";
+        performance.AllowClose = true;
+        performance.AllowTerminate = true;
+        Render(performance, 1140, 720, Path.Combine(output, "netscope-performance-termination-v110.png"));
+        performance.AllowClose = false;
+        performance.AllowTerminate = false;
 
         performance.ShowOverviewCommand.Execute(null);
         Render(performance, 860, 580, Path.Combine(output, "netscope-performance-compact-v060.png"));
@@ -152,6 +187,22 @@ internal static class Program
         Render(performance, 1140, 720, Path.Combine(output, "netscope-connections-v060.png"));
         performance.ConnectionGroup = "进程";
         Render(performance, 860, 580, Path.Combine(output, "netscope-connections-compact-v060.png"));
+
+        // V1.0：周/月报告页
+        performance.IsConnectionsSelected = false;
+        performance.IsEventsSelected = false;
+        performance.IsReportsSelected = true;
+        performance.ReportPeriodFilter = "周报";
+        performance.LoadReportCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        if (!performance.HasReport || performance.ReportSections.Count == 0)
+            throw new InvalidOperationException("Report page did not load any sections");
+        Render(performance, 1140, 720, Path.Combine(output, "netscope-performance-report-v100.png"));
+        Render(performance, 860, 580, Path.Combine(output, "netscope-performance-report-compact-v100.png"));
+        performance.ReportPeriodFilter = "月报";
+        performance.LoadReportCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        if (!performance.ReportHeadline.Contains("本月"))
+            throw new InvalidOperationException("Month report did not switch");
+        Render(performance, 1140, 720, Path.Combine(output, "netscope-performance-report-month-v100.png"));
         performance.Dispose();
     }
 
@@ -336,6 +387,70 @@ internal static class Program
                 new ImpactRankEntry("svchost.exe", 3, 900, 0, 24),
                 new ImpactRankEntry("NetScope.Collector.exe", 1, 120, 0, 9),
             ]);
+
+        public ValueTask<PerformanceReport?> GetReportAsync(ReportRequest request, CancellationToken cancellationToken = default)
+        {
+            // 用真实 ReportGenerator 走完整生成路径，保证截图内容与产品行为一致
+            var period = request.Period;
+            var now = DateTimeOffset.Now;
+            var days = period == ReportPeriod.Month ? 30 : 7;
+            var events = new List<PerformanceEvent>();
+            var marks = new List<PerformanceEvent>();
+            for (var i = 0; i < (period == ReportPeriod.Month ? 6 : 3); i++)
+            {
+                var at = now.AddDays(-(i * 2 + 1));
+                events.Add(new PerformanceEvent(
+                    Guid.NewGuid(), PerformanceEventType.CpuContention, PerformanceEventStatus.Closed,
+                    at, at.AddSeconds(45), 78, "可能存在 CPU 争用", "msedge.exe 在事件期间 CPU 显著抬升",
+                    ["系统 CPU 峰值 92%", "msedge.exe 平均 CPU 46%"],
+                    ["检查浏览器后台标签与扩展数量"],
+                    new ProcessInstanceKey(28440, at), "msedge.exe",
+                    [new PerformanceEventContributor(new(28440, at), "msedge.exe", 72),
+                     new PerformanceEventContributor(new(3916, at), "devenv.exe", 21)]));
+                if (i < 2)
+                {
+                    var markAt = at.AddSeconds(30);
+                    marks.Add(new PerformanceEvent(
+                        Guid.NewGuid(), PerformanceEventType.UserMarkedLag, PerformanceEventStatus.Confirmed,
+                        markAt.AddSeconds(-60), markAt, 100, "用户标记卡顿", "msedge.exe 影响分最高",
+                        ["用户手动标记"], [], new ProcessInstanceKey(28440, at), "msedge.exe",
+                        [new PerformanceEventContributor(new(28440, at), "msedge.exe", 68)]));
+                }
+            }
+            if (period == ReportPeriod.Month)
+                events.Add(new PerformanceEvent(
+                    Guid.NewGuid(), PerformanceEventType.MemoryPressure, PerformanceEventStatus.Closed,
+                    now.AddDays(-4), now.AddDays(-4).AddSeconds(90), 70, "可能存在内存压力", "mysqld.exe 工作集占用最大",
+                    ["可用内存低于阈值"], [], new ProcessInstanceKey(9460, now.AddDays(-4)), "mysqld.exe",
+                    [new PerformanceEventContributor(new(9460, now.AddDays(-4)), "mysqld.exe", 55)]));
+            var input = new ReportInput
+            {
+                Period = period,
+                Now = now,
+                Events = [.. events, .. marks],
+                PreviousPeriodEvents = [],
+                Behaviors =
+                [
+                    new ProcessBehaviorFinding(ProcessBehaviorKind.MemoryGrowth, "cloudsync.exe",
+                        now.AddDays(-8), now, 84, "cloudsync.exe 内存呈持续增长趋势",
+                        "观察期内私有内存约增加 402 MB",
+                        ["线性趋势 0.8 MB/分钟，拟合度 R²=0.88"], 18420, now.AddDays(-2)),
+                ],
+                Ports =
+                [
+                    new PortActivitySummary(8080, PortProtocol.Tcp, "server.exe", 9, 3600 * 30, now.AddHours(-1)),
+                    new PortActivitySummary(3306, PortProtocol.Tcp, "mysqld.exe", 6, 3600 * 48, now.AddHours(-2)),
+                ],
+                Connections = Enumerable.Range(0, 6).Select(i => new TcpConnectionRecord(
+                    Guid.NewGuid(), 28440, now.AddHours(-i - 1), "msedge.exe", IpAddressFamily.IPv4,
+                    "192.0.2.10", 51432 + i, $"203.0.113.{20 + i}", 443, "Established",
+                    now.AddHours(-i - 1), now.AddMinutes(-i))).ToList(),
+                SystemSampleCount = 18_000,
+                ProcessSampleCount = 4_600,
+                RetentionDays = 30
+            };
+            return ValueTask.FromResult<PerformanceReport?>(ReportGenerator.Generate(input));
+        }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 

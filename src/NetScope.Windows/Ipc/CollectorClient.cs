@@ -170,9 +170,32 @@ public sealed class CollectorClient : ICollectorClient
         {
             var dto = CollectorProtocol.Deserialize<ProcessEventsDto>(payload);
             if (dto is null) return new ProcessEventsSummary(0, []);
-            return new ProcessEventsSummary(dto.TotalCount, dto.Events.Select(CollectorDtos.ToModel).ToList());
+            return new ProcessEventsSummary(dto.TotalCount, dto.Events.Select(CollectorDtos.ToModel).ToList(), dto.LagRelatedCount, dto.WindowDays);
         }
         catch { return new ProcessEventsSummary(0, []); }
+    }
+
+    public async ValueTask<PerformanceReport?> GetReportAsync(ReportRequest request, CancellationToken cancellationToken = default)
+    {
+        // 30 天报告需要读取分桶历史与上一周期事件，允许比实时轮询更长的本地 IPC 时间预算。
+        var payload = await RequestAsync(CollectorProtocol.OpReport,
+            CollectorProtocol.Serialize(new ReportRequestDto((int)request.Period)), cancellationToken,
+            TimeSpan.FromSeconds(Math.Max(20, _timeout.TotalSeconds)));
+        if (payload is null) return null;
+        try { return CollectorProtocol.Deserialize<PerformanceReport>(payload); }
+        catch { return null; }
+    }
+
+    public async ValueTask<bool> AppendInterventionAsync(InterventionEvent evt, CancellationToken cancellationToken = default)
+    {
+        var payload = await RequestAsync(CollectorProtocol.OpIntervention,
+            CollectorProtocol.Serialize(new InterventionEventDto(
+                evt.Id.ToString(), evt.At, evt.Process.ProcessId, evt.Process.StartedAt, evt.ProcessName,
+                evt.ImagePath, (int)evt.Assessment, (int)evt.Requested, (int)evt.Outcome, evt.Message, evt.Win32Error)),
+            cancellationToken);
+        if (payload is null) return false;
+        try { return CollectorProtocol.Deserialize<bool>(payload) is true; }
+        catch { return false; }
     }
 
     public async ValueTask<IReadOnlyList<ImpactRankEntry>> GetImpactRankingAsync(int days = 7, int limit = 10, CancellationToken cancellationToken = default)

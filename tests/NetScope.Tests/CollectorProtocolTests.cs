@@ -75,7 +75,7 @@ public sealed class CollectorProtocolTests
     public void V06HealthAndInsightsRoundTripWithoutLosingEvidence()
     {
         Assert.Equal(3, CollectorProtocol.ProtocolVersion);
-        Assert.Equal("0.6.0", CollectorProtocol.ServerVersion);
+        Assert.Equal("1.1.0", CollectorProtocol.ServerVersion); // 版本随发布提升，协议兼容性由 ProtocolVersion 保证
         Assert.Contains("v4", CollectorProtocol.PipeName, StringComparison.Ordinal);
 
         var at = DateTimeOffset.Parse("2026-08-31T12:00:00+08:00");

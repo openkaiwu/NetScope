@@ -267,19 +267,54 @@ public sealed class CollectorHost : IAsyncDisposable
                         catch { request = null; }
                     }
                     if (request is null || string.IsNullOrWhiteSpace(request.ProcessName))
-                        return CollectorProtocol.Serialize(new ProcessEventsDto(0, []));
+                        return CollectorProtocol.Serialize(new ProcessEventsDto(0, [], 0, 7));
 
-                    var from = DateTimeOffset.Now.AddDays(-Math.Clamp(request.Days, 1, 30));
-                    var events = await QueryEventsAsync(1000, cancellationToken);
-                    var matching = events
-                        .Where(e => MatchesProcess(e, request.ProcessName))
-                        .OrderByDescending(e => e.StartedAt)
-                        .ToList();
-                    var limited = matching
-                        .Take(Math.Clamp(request.Limit, 1, 50))
-                        .Select(CollectorDtos.ToDto)
-                        .ToArray();
-                    return CollectorProtocol.Serialize(new ProcessEventsDto(matching.Count, limited));
+                    var days = Math.Clamp(request.Days, 1, 30);
+                    var events = await QueryEventsAsync(5000, cancellationToken);
+                    var summary = ProcessEventsQuery.Summarize(events, request.ProcessName, days, request.Limit, DateTimeOffset.Now);
+                    var limited = summary.Events.Select(CollectorDtos.ToDto).ToArray();
+                    return CollectorProtocol.Serialize(new ProcessEventsDto(summary.TotalCount, limited, summary.LagRelatedCount, summary.WindowDays));
+                }
+
+            case CollectorProtocol.OpReport:
+                {
+                    ReportRequestDto? request = null;
+                    if (payloadJson is not null)
+                    {
+                        try { request = CollectorProtocol.Deserialize<ReportRequestDto>(payloadJson); }
+                        catch { request = null; }
+                    }
+                    var period = request?.Period == 1 ? ReportPeriod.Month : ReportPeriod.Week;
+                    var report = await BuildReportAsync(period, cancellationToken);
+                    return report is null ? null : CollectorProtocol.Serialize(report);
+                }
+
+            case CollectorProtocol.OpIntervention:
+                {
+                    // 只写本地审计记录：这个操作不携带任何终止能力（执行器只存在于前台 App）
+                    if (payloadJson is null) return "false";
+                    try
+                    {
+                        var dto = CollectorProtocol.Deserialize<InterventionEventDto>(payloadJson);
+                        if (dto is null || string.IsNullOrWhiteSpace(dto.Id)) return "false";
+                        var evt = new InterventionEvent(
+                            Guid.Parse(dto.Id), dto.At,
+                            new ProcessInstanceKey(dto.ProcessId, dto.StartedAt),
+                            dto.ProcessName[..Math.Min(dto.ProcessName.Length, 200)],
+                            dto.ImagePath is null ? null : dto.ImagePath[..Math.Min(dto.ImagePath.Length, 512)],
+                            (TerminationRiskLevel)Math.Clamp(dto.Assessment, 0, 4),
+                            (TerminationKind)Math.Clamp(dto.Requested, 0, 1),
+                            (TerminationOutcome)Math.Clamp(dto.Outcome, 0, 8),
+                            dto.Message[..Math.Min(dto.Message.Length, 1000)],
+                            dto.Win32Error);
+                        await _historyStore.Inner.AppendInterventionAsync(evt, cancellationToken);
+                        return "true";
+                    }
+                    catch (Exception ex)
+                    {
+                        await _logger.WriteAsync("WARN", $"写入干预审计失败: {ex.Message}");
+                        return "false";
+                    }
                 }
 
             case CollectorProtocol.OpImpactRanking:
@@ -318,10 +353,6 @@ public sealed class CollectorHost : IAsyncDisposable
         }
     }
 
-    private static bool MatchesProcess(PerformanceEvent evt, string processName) =>
-        string.Equals(evt.PrimaryProcessName, processName, StringComparison.OrdinalIgnoreCase) ||
-        evt.Contributors?.Any(c => string.Equals(c.ProcessName, processName, StringComparison.OrdinalIgnoreCase)) == true;
-
     /// <summary>优先从历史库查询事件；数据库不可用时回退内存事件列表，保证时间线始终可用。</summary>
     private async Task<IReadOnlyList<PerformanceEvent>> QueryEventsAsync(int limit, CancellationToken cancellationToken)
     {
@@ -332,6 +363,49 @@ public sealed class CollectorHost : IAsyncDisposable
             if (stored.Count > 0) return stored;
         }
         lock (_eventLock) return _recentEvents.Take(limit).ToList();
+    }
+
+    /// <summary>
+    /// 汇总生成本机周报或月报：读取当前周期与上一周期的事件、分桶进程序列、端口会话、
+    /// 连接记录与采样覆盖度，全部来自本机历史库，不涉及网络。
+    /// </summary>
+    private async Task<PerformanceReport?> BuildReportAsync(ReportPeriod period, CancellationToken cancellationToken)
+    {
+        if (!_historyStore.Inner.IsUsable) return null;
+
+        var windowDays = period == ReportPeriod.Week ? 7 : 30;
+        var now = DateTimeOffset.Now;
+        var from = now.AddDays(-windowDays);
+        var previousFrom = from.AddDays(-windowDays);
+        var usable = _historyStore.Inner.IsUsable;
+
+        var events = usable
+            ? await _historyStore.Inner.QueryEventsAsync(from, now, 5000, cancellationToken)
+            : await QueryEventsAsync(5000, cancellationToken);
+        // 上一周期事件只在历史库内查询；保留期不足两个周期时返回空，报告会明确说明无可比数据
+        var previous = usable
+            ? await _historyStore.Inner.QueryEventsAsync(previousFrom, from, 5000, cancellationToken)
+            : [];
+        var points = await _historyStore.Inner.QueryProcessSeriesAsync(from, now, cancellationToken);
+        var behaviors = _behaviorAnalyzer.Analyze(points);
+        var ports = await _historyStore.Inner.QueryPortActivityAsync(from, now, cancellationToken);
+        var connections = await _historyStore.Inner.QueryConnectionsAsync(new(from, now, "", 500), cancellationToken);
+        var coverage = await _historyStore.Inner.QueryCoverageAsync(from, now, cancellationToken);
+
+        var input = new ReportInput
+        {
+            Period = period,
+            Now = now,
+            Events = events,
+            PreviousPeriodEvents = previous,
+            Behaviors = behaviors,
+            Ports = ports,
+            Connections = connections,
+            SystemSampleCount = coverage.SystemSampleCount,
+            ProcessSampleCount = coverage.ProcessSampleCount,
+            RetentionDays = _settings.HistoryRetentionDays
+        };
+        return ReportGenerator.Generate(input);
     }
 
     /// <summary>
@@ -482,6 +556,12 @@ public sealed class CollectorHost : IAsyncDisposable
 
         public ValueTask<IReadOnlyList<SystemPerformanceSample>> QuerySystemAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default) =>
             Inner.QuerySystemAsync(from, to, cancellationToken);
+
+        public ValueTask<IReadOnlyList<SystemPerformanceSample>> QuerySystemSeriesAsync(DateTimeOffset from, DateTimeOffset to, int maxPoints = 720, CancellationToken cancellationToken = default) =>
+            Inner.QuerySystemSeriesAsync(from, to, maxPoints, cancellationToken);
+
+        public ValueTask<HistoryCoverage> QueryCoverageAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default) =>
+            Inner.QueryCoverageAsync(from, to, cancellationToken);
 
         public ValueTask<IReadOnlyList<ProcessPerformanceSample>> QueryProcessAsync(ProcessInstanceKey process, DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default) =>
             Inner.QueryProcessAsync(process, from, to, cancellationToken);

@@ -105,6 +105,9 @@
                 <Button Command="{Binding ShowConnectionsCommand}" Padding="18,8" Content="TCP 连接">
                     <Button.Style><Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}"><Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/><Style.Triggers><DataTrigger Binding="{Binding IsConnectionsSelected}" Value="True"><Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/><Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/></DataTrigger></Style.Triggers></Style></Button.Style>
                 </Button>
+                <Button Command="{Binding ShowReportsCommand}" Padding="18,8" Content="周/月报告">
+                    <Button.Style><Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}"><Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/><Style.Triggers><DataTrigger Binding="{Binding IsReportsSelected}" Value="True"><Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/><Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/></DataTrigger></Style.Triggers></Style></Button.Style>
+                </Button>
                 <Button Command="{Binding RefreshCommand}" Style="{StaticResource SecondaryButtonStyle}" Padding="12,8" Margin="8,0,4,0" ToolTip="立即刷新">
                     <TextBlock FontFamily="{StaticResource FluentIcons}" Text="&#xE72C;"/>
                 </Button>
@@ -187,7 +190,7 @@
                                         <Border Padding="8,6" CornerRadius="6" Margin="0,0,0,4" Background="{DynamicResource SurfaceAltBrush}">
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="90"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="90"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
                                                 </Grid.ColumnDefinitions>
                                                 <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
                                                 <StackPanel Grid.Column="1" Orientation="Horizontal">
@@ -201,6 +204,13 @@
                                                 <Border Grid.Column="2" Background="{DynamicResource AccentBrush}" CornerRadius="8" Padding="8,2" VerticalAlignment="Center">
                                                     <TextBlock Text="{Binding ImpactText}" Foreground="White" FontSize="11" FontWeight="SemiBold"/>
                                                 </Border>
+                                                <!-- V1.1 行内快捷强制结束：与进程中心同一评估与确认链 -->
+                                                <Button Grid.Column="3" Command="{Binding DataContext.TerminateRowCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                                        CommandParameter="{Binding}" ToolTip="强制结束该进程（先评估风险并确认）"
+                                                        Visibility="{Binding ShowQuickTerminate, Converter={StaticResource BoolToVisibility}}"
+                                                        Background="Transparent" BorderThickness="0" Padding="6,3" Margin="8,0,0,0" Cursor="Hand">
+                                                    <TextBlock FontFamily="{StaticResource FluentIcons}" Text="&#xE711;" FontSize="13" Foreground="{DynamicResource ErrorBrush}"/>
+                                                </Button>
                                             </Grid>
                                         </Border>
                                     </DataTemplate>
@@ -363,7 +373,71 @@
                                                 </ItemsControl.ItemTemplate>
                                             </ItemsControl>
                                             <TextBlock Text="关联进程（按影响分排序，仅代表证据强度）" FontWeight="SemiBold" Margin="0,0,0,4"/>
-                                            <TextBlock Text="{Binding ContributorsText}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,10"/>
+                                            <TextBlock Text="{Binding ContributorsText}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+
+                                            <!-- 事件前后指标对比（V1.0 端到端场景） -->
+                                            <TextBlock Text="{Binding DataContext.EventContextStatus, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                       TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" Margin="0,8,0,4"/>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                <StackPanel Margin="0,0,8,0">
+                                                    <TextBlock Text="CPU（事件前后）" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                                    <controls:SparklineVisual Values="{Binding DataContext.EventCpuHistory, RelativeSource={RelativeSource AncestorType=UserControl}}" EmptyText="无系统采样" Height="52"/>
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="1" Margin="0,0,8,0">
+                                                    <TextBlock Text="内存占用 %" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                                    <controls:SparklineVisual Values="{Binding DataContext.EventMemoryHistory, RelativeSource={RelativeSource AncestorType=UserControl}}" EmptyText="无系统采样" Height="52"/>
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="2">
+                                                    <TextBlock Text="网络 KB/s" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                                    <controls:SparklineVisual Values="{Binding DataContext.EventNetworkHistory, RelativeSource={RelativeSource AncestorType=UserControl}}" EmptyText="无系统采样" Height="52"/>
+                                                </StackPanel>
+                                            </Grid>
+
+                                            <!-- 归因链：事件 → 候选进程 → 证据 → 根因假设 → 置信度 -->
+                                            <StackPanel Visibility="{Binding DataContext.HasEventChain, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibility}}" Margin="0,12,0,0">
+                                                <TextBlock Text="归因链（全链路可回放）" FontWeight="SemiBold"/>
+                                                <TextBlock Text="{Binding DataContext.EventChainHeadline, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,3,0,6"/>
+                                                <ItemsControl ItemsSource="{Binding DataContext.EventChainSteps, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Border Background="{DynamicResource SurfaceAltBrush}" CornerRadius="8" Padding="10,7" Margin="0,0,0,6">
+                                                                <StackPanel>
+                                                                    <DockPanel>
+                                                                        <TextBlock DockPanel.Dock="Right" Text="{Binding ConfidenceText}" Foreground="{DynamicResource AccentBrush}" FontSize="11" FontWeight="SemiBold"/>
+                                                                        <TextBlock Text="{Binding StageText}" FontWeight="SemiBold" FontSize="12"/>
+                                                                    </DockPanel>
+                                                                    <TextBlock Text="{Binding Detail}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,3,0,0"/>
+                                                                    <ItemsControl ItemsSource="{Binding Items}" Margin="0,4,0,0">
+                                                                        <ItemsControl.ItemTemplate>
+                                                                            <DataTemplate>
+                                                                                <TextBlock Text="{Binding StringFormat=· {0}}" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" Margin="0,1"/>
+                                                                            </DataTemplate>
+                                                                        </ItemsControl.ItemTemplate>
+                                                                    </ItemsControl>
+                                                                </StackPanel>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                                <TextBlock Text="{Binding DataContext.EventRecurrenceText, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                           TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0"/>
+                                                <TextBlock Text="{Binding DataContext.EventChainNote, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                           TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" Margin="0,4,0,0"/>
+                                                <Button Command="{Binding DataContext.ReplayEventEvidenceCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        Content="回放原始证据" Padding="10,4" Margin="0,8,0,0" Style="{StaticResource SecondaryButtonStyle}"/>
+                                                <TextBlock Text="{Binding DataContext.EventReplayStatus, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                           TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource AccentBrush}" Margin="0,5,0,0"/>
+
+                                                <StackPanel Visibility="{Binding DataContext.HasEventProcessTrend, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVisibility}}" Margin="0,8,0,0">
+                                                    <TextBlock Text="{Binding DataContext.EventProcessTrendTitle, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                               TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,4"/>
+                                                    <controls:SparklineVisual Values="{Binding DataContext.EventProcessCpuHistory, RelativeSource={RelativeSource AncestorType=UserControl}}" EmptyText="无进程采样" Height="64"/>
+                                                    <controls:SparklineVisual Values="{Binding DataContext.EventProcessMemoryHistory, RelativeSource={RelativeSource AncestorType=UserControl}}" EmptyText="无内存采样" Height="52" Margin="0,6,0,0"/>
+                                                    <controls:SparklineVisual Values="{Binding DataContext.EventProcessIoHistory, RelativeSource={RelativeSource AncestorType=UserControl}}" EmptyText="无 I/O 采样" Height="52" Margin="0,6,0,0"/>
+                                                </StackPanel>
+                                            </StackPanel>
                                         </StackPanel>
                                     </DataTemplate>
                                 </ContentControl.ContentTemplate>
@@ -407,7 +481,7 @@
                                         <Border Padding="10,7" CornerRadius="6" Margin="0,0,0,4" Background="{DynamicResource SurfaceAltBrush}">
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="140"/><ColumnDefinition Width="70"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="140"/><ColumnDefinition Width="70"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
                                                 </Grid.ColumnDefinitions>
                                                 <StackPanel Orientation="Horizontal">
                                                     <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxWidth="110"/>
@@ -418,6 +492,13 @@
                                                 <Border Grid.Column="3" Background="{DynamicResource AccentBrush}" CornerRadius="8" Padding="8,2" VerticalAlignment="Center">
                                                     <TextBlock Text="{Binding ImpactText}" Foreground="White" FontSize="11" FontWeight="SemiBold"/>
                                                 </Border>
+                                                <!-- V1.1 行内快捷强制结束：点击时按需评估，不允许的目标会跳转到建议卡片说明 -->
+                                                <Button Grid.Column="4" Command="{Binding DataContext.TerminateRowCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                                        CommandParameter="{Binding}" ToolTip="强制结束该进程（先评估风险并确认）"
+                                                        Visibility="{Binding ShowQuickTerminate, Converter={StaticResource BoolToVisibility}}"
+                                                        Background="Transparent" BorderThickness="0" Padding="6,3" Margin="8,0,0,0" Cursor="Hand">
+                                                    <TextBlock FontFamily="{StaticResource FluentIcons}" Text="&#xE711;" FontSize="14" Foreground="{DynamicResource ErrorBrush}"/>
+                                                </Button>
                                             </Grid>
                                         </Border>
                                     </DataTemplate>
@@ -447,6 +528,45 @@
                                         <TextBlock Text="{Binding ProcessIdentityPath}" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
                                         <TextBlock Text="{Binding ProcessIdentityPurpose}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,0"/>
                                         <TextBlock Text="{Binding ProcessIdentityAdvice}" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                                <!-- V1.1 受控干预：结束进程建议卡片 -->
+                                <TextBlock Text="结束进程建议（受控干预）" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="2,10,0,4"/>
+                                <Border Background="{DynamicResource SurfaceAltBrush}" CornerRadius="8" Padding="10" Margin="0,0,0,6"
+                                        Visibility="{Binding HasTerminationAdvice, Converter={StaticResource BoolToVisibility}}">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding TerminationLevelText}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                        <TextBlock Text="{Binding TerminationConclusion}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,3,0,6"/>
+                                        <ItemsControl ItemsSource="{Binding TerminationEvidence}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding StringFormat=· {0}}" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,1"/>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <ItemsControl ItemsSource="{Binding TerminationUnknowns}" Margin="0,4,0,0">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding StringFormat=未知：{0}}" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource AccentBrush}" Margin="0,1"/>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <ItemsControl ItemsSource="{Binding TerminationAlternatives}" Margin="0,4,0,0">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding StringFormat=建议：{0}}" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" Margin="0,1"/>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
+                                            <Button Content="请求关闭" Command="{Binding RequestCloseProcessCommand}" Padding="12,4" Margin="0,0,8,0"
+                                                    Style="{StaticResource SecondaryButtonStyle}"
+                                                    Visibility="{Binding AllowClose, Converter={StaticResource BoolToVisibility}}"/>
+                                            <Button Content="强制结束" Command="{Binding TerminateProcessCommand}" Padding="12,4"
+                                                    Style="{StaticResource SecondaryButtonStyle}"
+                                                    Visibility="{Binding AllowTerminate, Converter={StaticResource BoolToVisibility}}"/>
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding TerminationStatus}" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource AccentBrush}"/>
                                     </StackPanel>
                                 </Border>
                                 <TextBlock Text="{Binding ProcessHistoryTitle}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="2,8,0,4" TextWrapping="Wrap"/>
@@ -559,6 +679,70 @@
                     <DataGrid.RowDetailsTemplate><DataTemplate><TextBlock Text="{Binding Detail}" Margin="10" TextWrapping="Wrap"/></DataTemplate></DataGrid.RowDetailsTemplate>
                 </DataGrid>
                 <TextBlock Grid.Row="2" Text="{Binding ConnectionStatus}" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{DynamicResource TextMutedBrush}" FontSize="11"/>
+            </Grid>
+
+            <!-- 周/月报告（V1.0）：本机汇总，可导出 Markdown -->
+            <Grid Visibility="{Binding IsReportsSelected, Converter={StaticResource BoolToVisibility}}">
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                <StackPanel Margin="0,0,0,10">
+                    <TextBlock Text="周报 / 月报" FontSize="20" FontWeight="SemiBold"/>
+                    <TextBlock Text="由本机历史证据汇总生成，与上一周期对比；报告只排列证据，不下确定因果结论，导出仅写本地文件。" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,8"/>
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Content="导出 Markdown" Command="{Binding ExportReportCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                Visibility="{Binding HasReport, Converter={StaticResource BoolToVisibility}}"/>
+                        <Button DockPanel.Dock="Right" Content="生成报告" Command="{Binding LoadReportCommand}" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"/>
+                        <ComboBox DockPanel.Dock="Right" ItemsSource="{Binding ReportPeriodOptions}" SelectedItem="{Binding ReportPeriodFilter}" Width="90"/>
+                        <TextBlock Text="{Binding ReportMetaText}" VerticalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}" FontSize="11" TextWrapping="Wrap"/>
+                    </DockPanel>
+                </StackPanel>
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <StackPanel Visibility="{Binding HasReport, Converter={StaticResource BoolToVisibility}}" Margin="0,0,0,4">
+                            <TextBlock Text="{Binding ReportHeadline}" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding ReportSummary}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,10"/>
+                        </StackPanel>
+                        <ItemsControl ItemsSource="{Binding ReportSections}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Style="{StaticResource CardStyle}" Padding="12" Margin="0,0,0,10">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Title}" FontSize="14" FontWeight="SemiBold"/>
+                                            <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,3,0,8"/>
+                                            <ItemsControl ItemsSource="{Binding Metrics}" Margin="0,0,0,6">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Background="{DynamicResource SurfaceAltBrush}" CornerRadius="8" Padding="10,6" Margin="0,0,0,4">
+                                                            <StackPanel>
+                                                                <DockPanel>
+                                                                    <TextBlock DockPanel.Dock="Right" Text="{Binding Value}" FontWeight="SemiBold"/>
+                                                                    <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis"/>
+                                                                </DockPanel>
+                                                                <StackPanel Orientation="Horizontal">
+                                                                    <TextBlock Text="{Binding Delta}" FontSize="11" Foreground="{DynamicResource AccentBrush}"
+                                                                               Visibility="{Binding HasDelta, Converter={StaticResource BoolToVisibility}}"/>
+                                                                    <TextBlock Text="{Binding Note}" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" Margin="10,0,0,0"
+                                                                               Visibility="{Binding HasNote, Converter={StaticResource BoolToVisibility}}"/>
+                                                                </StackPanel>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                            <ItemsControl ItemsSource="{Binding Bullets}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding StringFormat=· {0}}" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,1"/>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </ScrollViewer>
+                <TextBlock Grid.Row="2" Text="{Binding ReportStatus}" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{DynamicResource TextMutedBrush}" FontSize="11"/>
             </Grid>
         </Grid>
     </Grid>

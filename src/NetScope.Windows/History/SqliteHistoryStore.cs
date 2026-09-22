@@ -16,7 +16,9 @@ namespace NetScope.Windows.History;
 public sealed class SqliteHistoryStore : IPerformanceHistoryStore
 {
     private static readonly long TicksPer30Seconds = TimeSpan.FromSeconds(30).Ticks;
+    private static readonly long TicksPer5Minutes = TimeSpan.FromMinutes(5).Ticks;
     private static readonly long TicksPerDay = TimeSpan.FromDays(1).Ticks;
+    private static readonly long TicksPer7Days = TimeSpan.FromDays(7).Ticks;
 
     private readonly string _databasePath;
     private readonly RollingFileLogger? _logger;
@@ -95,6 +97,72 @@ public sealed class SqliteHistoryStore : IPerformanceHistoryStore
     {
         Enqueue(new WriteWorkItem(Health: sample));
         return ValueTask.CompletedTask;
+    }
+
+    /// <summary>记录一次用户显式发起的干预动作（审计）。不保存命令行、环境变量或文档内容。</summary>
+    public ValueTask AppendInterventionAsync(InterventionEvent evt, CancellationToken cancellationToken = default)
+    {
+        Enqueue(new WriteWorkItem(Intervention: evt));
+        return ValueTask.CompletedTask;
+    }
+
+    public async ValueTask<IReadOnlyList<InterventionEvent>> QueryInterventionsAsync(DateTimeOffset from, DateTimeOffset to, int limit = 200, CancellationToken cancellationToken = default)
+    {
+        if (!IsUsable) return [];
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            await using var command = _connection!.CreateCommand();
+            command.CommandText = """
+                SELECT Id, At, ProcessId, StartedAt, ProcessName, ImagePath, Assessment, Requested, Outcome, Message, Win32Error
+                FROM InterventionEvents WHERE At >= @from AND At <= @to ORDER BY At DESC LIMIT @limit
+                """;
+            command.Parameters.AddWithValue("@from", from.UtcTicks);
+            command.Parameters.AddWithValue("@to", to.UtcTicks);
+            command.Parameters.AddWithValue("@limit", Math.Clamp(limit, 1, 1000));
+            var result = new List<InterventionEvent>();
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                result.Add(new InterventionEvent(
+                    Guid.Parse(reader.GetString(0)),
+                    new DateTimeOffset(reader.GetInt64(1), TimeSpan.Zero).ToLocalTime(),
+                    new ProcessInstanceKey((int)reader.GetInt64(2), new DateTimeOffset(reader.GetInt64(3), TimeSpan.Zero).ToLocalTime()),
+                    reader.GetString(4),
+                    reader.IsDBNull(5) ? null : reader.GetString(5),
+                    (TerminationRiskLevel)reader.GetInt64(6),
+                    (TerminationKind)reader.GetInt64(7),
+                    (TerminationOutcome)reader.GetInt64(8),
+                    reader.GetString(9),
+                    (int)reader.GetInt64(10)));
+            return result;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private async Task WriteInterventionAsync(InterventionEvent evt, SqliteTransaction transaction, CancellationToken cancellationToken)
+    {
+        await using var command = _connection!.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            INSERT INTO InterventionEvents (Id, At, ProcessId, StartedAt, ProcessName, ImagePath, Assessment, Requested, Outcome, Message, Win32Error)
+            VALUES (@id, @at, @pid, @started, @name, @path, @assessment, @requested, @outcome, @message, @error)
+            ON CONFLICT(Id) DO NOTHING
+            """;
+        command.Parameters.AddWithValue("@id", evt.Id.ToString());
+        command.Parameters.AddWithValue("@at", evt.At.UtcTicks);
+        command.Parameters.AddWithValue("@pid", evt.Process.ProcessId);
+        command.Parameters.AddWithValue("@started", evt.Process.StartedAt.UtcTicks);
+        command.Parameters.AddWithValue("@name", evt.ProcessName);
+        command.Parameters.AddWithValue("@path", (object?)evt.ImagePath ?? DBNull.Value);
+        command.Parameters.AddWithValue("@assessment", (int)evt.Assessment);
+        command.Parameters.AddWithValue("@requested", (int)evt.Requested);
+        command.Parameters.AddWithValue("@outcome", (int)evt.Outcome);
+        command.Parameters.AddWithValue("@message", evt.Message);
+        command.Parameters.AddWithValue("@error", evt.Win32Error);
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     public async ValueTask<IReadOnlyList<CollectorHealthSnapshot>> QueryCollectorHealthAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default)
@@ -255,6 +323,82 @@ public sealed class SqliteHistoryStore : IPerformanceHistoryStore
         }
     }
 
+    /// <summary>
+    /// 分桶系统序列（周/月报告用）：把窗口聚合到至多 maxPoints 个桶，输出平均值。
+    /// 磁盘与响应性证据不参与平均，本查询不返回这两项。
+    /// </summary>
+    public async ValueTask<IReadOnlyList<SystemPerformanceSample>> QuerySystemSeriesAsync(DateTimeOffset from, DateTimeOffset to, int maxPoints = 720, CancellationToken cancellationToken = default)
+    {
+        if (!IsUsable || to <= from) return [];
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            maxPoints = Math.Clamp(maxPoints, 1, 1440);
+            var bucketTicks = Math.Max(TimeSpan.TicksPerSecond, (to.UtcTicks - from.UtcTicks) / maxPoints);
+            await using var command = _connection!.CreateCommand();
+            command.CommandText = """
+                SELECT MIN(Timestamp), AVG(CpuPercent),
+                       CAST(AVG(AvailableMemoryBytes) AS INTEGER), CAST(AVG(TotalMemoryBytes) AS INTEGER),
+                       CAST(AVG(NetworkReceivedBps) AS INTEGER), CAST(AVG(NetworkSentBps) AS INTEGER),
+                       MAX(NetworkLinkUp)
+                FROM SystemSamples WHERE Timestamp >= @from AND Timestamp <= @to
+                GROUP BY (Timestamp - @from) / @bucket
+                ORDER BY MIN(Timestamp)
+                """;
+            command.Parameters.AddWithValue("@from", from.UtcTicks);
+            command.Parameters.AddWithValue("@to", to.UtcTicks);
+            command.Parameters.AddWithValue("@bucket", bucketTicks);
+
+            var result = new List<SystemPerformanceSample>();
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                result.Add(new SystemPerformanceSample(
+                    new DateTimeOffset(reader.GetInt64(0), TimeSpan.Zero).ToLocalTime(),
+                    reader.GetDouble(1), reader.GetInt64(2), reader.GetInt64(3),
+                    reader.GetInt64(4), reader.GetInt64(5), reader.GetInt64(6) != 0));
+            return result;
+        }
+        catch (Exception ex)
+        {
+            await LogAsync("WARN", $"查询系统序列失败: {ex.Message}");
+            return [];
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>时间窗内的采样覆盖度（系统与进程采样各多少条），用于报告的数据完整性说明。</summary>
+    public async ValueTask<HistoryCoverage> QueryCoverageAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default)
+    {
+        if (!IsUsable) return new(0, 0);
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            await using var command = _connection!.CreateCommand();
+            command.CommandText = """
+                SELECT (SELECT COUNT(*) FROM SystemSamples WHERE Timestamp >= @from AND Timestamp <= @to),
+                       (SELECT COUNT(*) FROM ProcessSamples WHERE Timestamp >= @from AND Timestamp <= @to)
+                """;
+            command.Parameters.AddWithValue("@from", from.UtcTicks);
+            command.Parameters.AddWithValue("@to", to.UtcTicks);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+                return new((int)reader.GetInt64(0), (int)reader.GetInt64(1));
+            return new(0, 0);
+        }
+        catch (Exception ex)
+        {
+            await LogAsync("WARN", $"查询采样覆盖度失败: {ex.Message}");
+            return new(0, 0);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public async ValueTask<IReadOnlyList<ProcessPerformanceSample>> QueryProcessAsync(ProcessInstanceKey process, DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken = default)
     {
         if (!IsUsable) return [];
@@ -316,7 +460,7 @@ public sealed class SqliteHistoryStore : IPerformanceHistoryStore
                 """;
             command.Parameters.AddWithValue("@from", from.UtcTicks);
             command.Parameters.AddWithValue("@to", to.UtcTicks);
-            command.Parameters.AddWithValue("@limit", Math.Clamp(limit, 1, 1000));
+            command.Parameters.AddWithValue("@limit", Math.Clamp(limit, 1, 5000));
 
             var events = new List<PerformanceEvent>();
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -459,6 +603,7 @@ public sealed class SqliteHistoryStore : IPerformanceHistoryStore
                 else if (item.Health is { } health) await WriteHealthAsync(health, transaction, cancellationToken);
                 else if (item.Connection is { } connection) await WriteConnectionAsync(connection, transaction, cancellationToken);
                 else if (item.PortSession is { } session) await WritePortSessionAsync(session, transaction, cancellationToken);
+                else if (item.Intervention is { } intervention) await WriteInterventionAsync(intervention, transaction, cancellationToken);
             }
             await transaction.CommitAsync(cancellationToken);
         }
@@ -602,7 +747,11 @@ public sealed class SqliteHistoryStore : IPerformanceHistoryStore
         }
     }
 
-    /// <summary>保留期清理与降采样：超过 24 小时的采样压缩为 30 秒粒度，超期数据删除。</summary>
+    /// <summary>
+    /// 保留期清理与多级降采样：24 小时内保留原始 5 秒粒度；24 小时–7 天压缩为 30 秒粒度；
+    /// 7 天以上压缩为 5 分钟粒度（30 天口径）。压缩写回桶内平均值而非抽样保留，且幂等：
+    /// 已压缩的桶内只剩一行，再次压缩不会改变数值。磁盘/响应性证据无法平均，保留桶内代表样本。
+    /// </summary>
     private async Task CompactAsync(CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken);
@@ -619,13 +768,112 @@ public sealed class SqliteHistoryStore : IPerformanceHistoryStore
                 DELETE FROM PortSessions WHERE EndedAt < @cutoff;
                 DELETE FROM TcpConnections WHERE LastSeen < @cutoff;
                 DELETE FROM CollectorHealth WHERE Timestamp < @cutoff;
-                DELETE FROM SystemSamples WHERE Timestamp < @day AND Id NOT IN (SELECT MIN(Id) FROM SystemSamples WHERE Timestamp < @day GROUP BY Timestamp / @bucket);
-                DELETE FROM ProcessSamples WHERE Timestamp < @day AND Id NOT IN (SELECT MIN(Id) FROM ProcessSamples WHERE Timestamp < @day GROUP BY ProcessId, StartedAt, Timestamp / @bucket);
+                DELETE FROM InterventionEvents WHERE At < @cutoff;
+
+                -- 30 秒层（24 小时 – 7 天）
+                DROP TABLE IF EXISTS temp._sys30;
+                CREATE TEMP TABLE _sys30 AS
+                  SELECT MIN(Id) AS KeepId, AVG(CpuPercent) AS Cpu,
+                         CAST(AVG(AvailableMemoryBytes) AS INTEGER) AS Avail,
+                         CAST(AVG(TotalMemoryBytes) AS INTEGER) AS Total,
+                         CAST(AVG(NetworkReceivedBps) AS INTEGER) AS Rx,
+                         CAST(AVG(NetworkSentBps) AS INTEGER) AS Tx,
+                         MAX(NetworkLinkUp) AS LinkUp
+                  FROM SystemSamples WHERE Timestamp >= @week AND Timestamp < @day
+                  GROUP BY Timestamp / @b30;
+                UPDATE SystemSamples SET
+                  CpuPercent = (SELECT Cpu FROM _sys30 WHERE KeepId = SystemSamples.Id),
+                  AvailableMemoryBytes = (SELECT Avail FROM _sys30 WHERE KeepId = SystemSamples.Id),
+                  TotalMemoryBytes = (SELECT Total FROM _sys30 WHERE KeepId = SystemSamples.Id),
+                  NetworkReceivedBps = (SELECT Rx FROM _sys30 WHERE KeepId = SystemSamples.Id),
+                  NetworkSentBps = (SELECT Tx FROM _sys30 WHERE KeepId = SystemSamples.Id),
+                  NetworkLinkUp = (SELECT LinkUp FROM _sys30 WHERE KeepId = SystemSamples.Id)
+                  WHERE Id IN (SELECT KeepId FROM _sys30);
+                DELETE FROM SystemSamples WHERE Timestamp >= @week AND Timestamp < @day AND Id NOT IN (SELECT KeepId FROM _sys30);
+                DROP TABLE temp._sys30;
+
+                DROP TABLE IF EXISTS temp._proc30;
+                CREATE TEMP TABLE _proc30 AS
+                  SELECT MIN(Id) AS KeepId, AVG(CpuPercent) AS Cpu,
+                         CAST(AVG(WorkingSetBytes) AS INTEGER) AS Ws,
+                         CAST(AVG(PrivateBytes) AS INTEGER) AS Pb,
+                         CAST(AVG(ReadBps) AS INTEGER) AS Rb,
+                         CAST(AVG(WriteBps) AS INTEGER) AS Wb,
+                         CAST(AVG(ReadOps) AS INTEGER) AS Ro,
+                         CAST(AVG(WriteOps) AS INTEGER) AS Wo,
+                         MAX(IsForeground) AS Fg
+                  FROM ProcessSamples WHERE Timestamp >= @week AND Timestamp < @day
+                  GROUP BY ProcessId, StartedAt, Timestamp / @b30;
+                UPDATE ProcessSamples SET
+                  CpuPercent = (SELECT Cpu FROM _proc30 WHERE KeepId = ProcessSamples.Id),
+                  WorkingSetBytes = (SELECT Ws FROM _proc30 WHERE KeepId = ProcessSamples.Id),
+                  PrivateBytes = (SELECT Pb FROM _proc30 WHERE KeepId = ProcessSamples.Id),
+                  ReadBps = (SELECT Rb FROM _proc30 WHERE KeepId = ProcessSamples.Id),
+                  WriteBps = (SELECT Wb FROM _proc30 WHERE KeepId = ProcessSamples.Id),
+                  ReadOps = (SELECT Ro FROM _proc30 WHERE KeepId = ProcessSamples.Id),
+                  WriteOps = (SELECT Wo FROM _proc30 WHERE KeepId = ProcessSamples.Id),
+                  IsForeground = (SELECT Fg FROM _proc30 WHERE KeepId = ProcessSamples.Id)
+                  WHERE Id IN (SELECT KeepId FROM _proc30);
+                DELETE FROM ProcessSamples WHERE Timestamp >= @week AND Timestamp < @day AND Id NOT IN (SELECT KeepId FROM _proc30);
+                DROP TABLE temp._proc30;
+
+                -- 5 分钟层（7 天以上，30 天口径）
+                DROP TABLE IF EXISTS temp._sys300;
+                CREATE TEMP TABLE _sys300 AS
+                  SELECT MIN(Id) AS KeepId, AVG(CpuPercent) AS Cpu,
+                         CAST(AVG(AvailableMemoryBytes) AS INTEGER) AS Avail,
+                         CAST(AVG(TotalMemoryBytes) AS INTEGER) AS Total,
+                         CAST(AVG(NetworkReceivedBps) AS INTEGER) AS Rx,
+                         CAST(AVG(NetworkSentBps) AS INTEGER) AS Tx,
+                         MAX(NetworkLinkUp) AS LinkUp
+                  FROM SystemSamples WHERE Timestamp < @week
+                  GROUP BY Timestamp / @b300;
+                UPDATE SystemSamples SET
+                  CpuPercent = (SELECT Cpu FROM _sys300 WHERE KeepId = SystemSamples.Id),
+                  AvailableMemoryBytes = (SELECT Avail FROM _sys300 WHERE KeepId = SystemSamples.Id),
+                  TotalMemoryBytes = (SELECT Total FROM _sys300 WHERE KeepId = SystemSamples.Id),
+                  NetworkReceivedBps = (SELECT Rx FROM _sys300 WHERE KeepId = SystemSamples.Id),
+                  NetworkSentBps = (SELECT Tx FROM _sys300 WHERE KeepId = SystemSamples.Id),
+                  NetworkLinkUp = (SELECT LinkUp FROM _sys300 WHERE KeepId = SystemSamples.Id)
+                  WHERE Id IN (SELECT KeepId FROM _sys300);
+                DELETE FROM SystemSamples WHERE Timestamp < @week AND Id NOT IN (SELECT KeepId FROM _sys300);
+                DROP TABLE temp._sys300;
+
+                DROP TABLE IF EXISTS temp._proc300;
+                CREATE TEMP TABLE _proc300 AS
+                  SELECT MIN(Id) AS KeepId, AVG(CpuPercent) AS Cpu,
+                         CAST(AVG(WorkingSetBytes) AS INTEGER) AS Ws,
+                         CAST(AVG(PrivateBytes) AS INTEGER) AS Pb,
+                         CAST(AVG(ReadBps) AS INTEGER) AS Rb,
+                         CAST(AVG(WriteBps) AS INTEGER) AS Wb,
+                         CAST(AVG(ReadOps) AS INTEGER) AS Ro,
+                         CAST(AVG(WriteOps) AS INTEGER) AS Wo,
+                         MAX(IsForeground) AS Fg
+                  FROM ProcessSamples WHERE Timestamp < @week
+                  GROUP BY ProcessId, StartedAt, Timestamp / @b300;
+                UPDATE ProcessSamples SET
+                  CpuPercent = (SELECT Cpu FROM _proc300 WHERE KeepId = ProcessSamples.Id),
+                  WorkingSetBytes = (SELECT Ws FROM _proc300 WHERE KeepId = ProcessSamples.Id),
+                  PrivateBytes = (SELECT Pb FROM _proc300 WHERE KeepId = ProcessSamples.Id),
+                  ReadBps = (SELECT Rb FROM _proc300 WHERE KeepId = ProcessSamples.Id),
+                  WriteBps = (SELECT Wb FROM _proc300 WHERE KeepId = ProcessSamples.Id),
+                  ReadOps = (SELECT Ro FROM _proc300 WHERE KeepId = ProcessSamples.Id),
+                  WriteOps = (SELECT Wo FROM _proc300 WHERE KeepId = ProcessSamples.Id),
+                  IsForeground = (SELECT Fg FROM _proc300 WHERE KeepId = ProcessSamples.Id)
+                  WHERE Id IN (SELECT KeepId FROM _proc300);
+                DELETE FROM ProcessSamples WHERE Timestamp < @week AND Id NOT IN (SELECT KeepId FROM _proc300);
+                DROP TABLE temp._proc300;
                 """;
             command.Parameters.AddWithValue("@cutoff", now.AddDays(-_retentionDays).UtcTicks);
             command.Parameters.AddWithValue("@day", now.AddDays(-1).UtcTicks);
-            command.Parameters.AddWithValue("@bucket", TicksPer30Seconds);
+            command.Parameters.AddWithValue("@week", now.AddDays(-7).UtcTicks);
+            command.Parameters.AddWithValue("@b30", TicksPer30Seconds);
+            command.Parameters.AddWithValue("@b300", TicksPer5Minutes);
+            // 单个事务保证压缩原子性：中途失败不会留下“已平均但未删除”的重复桶
+            await using var transaction = (SqliteTransaction)await _connection.BeginTransactionAsync(cancellationToken);
+            command.Transaction = transaction;
             await command.ExecuteNonQueryAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
         }
         catch (Exception ex)
         {
@@ -741,6 +989,21 @@ public sealed class SqliteHistoryStore : IPerformanceHistoryStore
             );
             CREATE INDEX IF NOT EXISTS IX_PortSessions_Port ON PortSessions(Port, Protocol, StartedAt);
             CREATE INDEX IF NOT EXISTS IX_PortSessions_EndedAt ON PortSessions(EndedAt);
+
+            CREATE TABLE IF NOT EXISTS InterventionEvents (
+                Id TEXT PRIMARY KEY,
+                At INTEGER NOT NULL,
+                ProcessId INTEGER NOT NULL,
+                StartedAt INTEGER NOT NULL,
+                ProcessName TEXT NOT NULL,
+                ImagePath TEXT,
+                Assessment INTEGER NOT NULL,
+                Requested INTEGER NOT NULL,
+                Outcome INTEGER NOT NULL,
+                Message TEXT NOT NULL,
+                Win32Error INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS IX_InterventionEvents_At ON InterventionEvents(At);
             """;
         await schema.ExecuteNonQueryAsync(cancellationToken);
         // Additive migration: preserve all V0.3 samples and leave unknown new metrics null.
@@ -866,5 +1129,6 @@ public sealed class SqliteHistoryStore : IPerformanceHistoryStore
         PerformanceEvent? Event = null,
         PortSessionRecord? PortSession = null,
         TcpConnectionRecord? Connection = null,
-        CollectorHealthSnapshot? Health = null);
+        CollectorHealthSnapshot? Health = null,
+        InterventionEvent? Intervention = null);
 }

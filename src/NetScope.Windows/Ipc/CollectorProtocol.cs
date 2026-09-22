@@ -10,7 +10,7 @@ public static class CollectorProtocol
     public const string PipeName = "NetScope.Collector.v4";
     public const string LocalMutexName = @"Local\NetScope.Collector.v4";
     public const int ProtocolVersion = 3;
-    public const string ServerVersion = "0.6.0";
+    public const string ServerVersion = "1.1.0";
     public const int MaxMessageBytes = 2 * 1024 * 1024;
 
     public const string OpHello = "hello";
@@ -28,6 +28,8 @@ public static class CollectorProtocol
     public const string OpPortHistory = "portHistory";
     public const string OpProcessEvents = "processEvents";
     public const string OpImpactRanking = "impactRanking";
+    public const string OpReport = "report";
+    public const string OpIntervention = "intervention";
 
     public static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -108,11 +110,19 @@ public sealed record PortUsageDto(int Port, int Protocol, string ProcessName, in
 
 public sealed record ProcessEventsRequest(string ProcessName, int Days, int Limit);
 
-public sealed record ProcessEventsDto(int TotalCount, PerformanceEventDto[] Events);
+public sealed record ProcessEventsDto(int TotalCount, PerformanceEventDto[] Events, int LagRelatedCount = 0, int WindowDays = 7);
 
 public sealed record ImpactRankingRequest(int Days, int Limit);
 
 public sealed record ImpactRankDto(string ProcessName, int EventCount, double TotalSeconds, int LagRelatedCount, int Score);
+
+/// <summary>报告请求：周期（0=周，1=月）。报告由 Collector 在本机汇总生成，返回完整 PerformanceReport。</summary>
+public sealed record ReportRequestDto(int Period);
+
+/// <summary>干预审计事件（V1.1）：只写本地审计记录，不携带任何终止能力。</summary>
+public sealed record InterventionEventDto(
+    string Id, DateTimeOffset At, int ProcessId, DateTimeOffset StartedAt, string ProcessName,
+    string? ImagePath, int Assessment, int Requested, int Outcome, string Message, int Win32Error);
 
 public static class CollectorDtos
 {

@@ -165,10 +165,10 @@ public sealed class SqliteHistoryStoreTests : IAsyncLifetime
 
         var result = await _store.QuerySystemAsync(t.AddMinutes(-1), t.AddMinutes(5));
         Assert.Equal(3, result.Count);
-        // 每个桶保留第一条
-        Assert.Equal(0, result[0].CpuPercent);
-        Assert.Equal(30, result[1].CpuPercent);
-        Assert.Equal(60, result[2].CpuPercent);
+        // V1.0 起压缩写回桶内平均值而非抽样保留第一条：0..29 平均 14.5，30..59 平均 44.5，60..89 平均 74.5
+        Assert.Equal(14.5, result[0].CpuPercent, 1);
+        Assert.Equal(44.5, result[1].CpuPercent, 1);
+        Assert.Equal(74.5, result[2].CpuPercent, 1);
     }
 
     [Fact]
