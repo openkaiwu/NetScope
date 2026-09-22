@@ -34,7 +34,7 @@ public sealed class SparklineVisual : DrawingVisualHost
         if (values.Length < 2)
         {
             var wait = new FormattedText(EmptyText, System.Globalization.CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
-                new Typeface("Segoe UI Variable Text"), 11, new SolidColorBrush(Color.FromRgb(152, 162, 179)), 1.0);
+                Services.AppFonts.Interface, 11, new SolidColorBrush(Color.FromRgb(152, 162, 179)), 1.0);
             context.DrawText(wait, new Point((size.Width - wait.Width) / 2, (size.Height - wait.Height) / 2));
             return;
         }

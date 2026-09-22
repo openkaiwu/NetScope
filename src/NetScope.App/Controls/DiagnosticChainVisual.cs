@@ -64,10 +64,10 @@ public sealed class DiagnosticChainVisual : DrawingVisualHost
             if (items[i].Status != DiagnosticStatus.NotTested || items[i].IsRunning)
                 context.DrawEllipse(color, null, new Point(x, centerY), 6, 6);
             var title = new FormattedText(items[i].Title, System.Globalization.CultureInfo.CurrentUICulture,
-                FlowDirection.LeftToRight, new Typeface("Segoe UI Variable Text"), 11, new SolidColorBrush(Color.FromRgb(75, 85, 99)), 1.0);
+                FlowDirection.LeftToRight, Services.AppFonts.Interface, 11, new SolidColorBrush(Color.FromRgb(75, 85, 99)), 1.0);
             context.DrawText(title, new Point(x - title.Width / 2, centerY + 23));
             var caption = new FormattedText(items[i].IsRunning ? "检测中" : StatusText(items[i].Status), System.Globalization.CultureInfo.CurrentUICulture,
-                FlowDirection.LeftToRight, new Typeface("Segoe UI Variable Text"), 10, color, 1.0);
+                FlowDirection.LeftToRight, Services.AppFonts.Interface, 10, color, 1.0);
             context.DrawText(caption, new Point(x - caption.Width / 2, centerY - 28));
         }
     }

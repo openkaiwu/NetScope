@@ -4,8 +4,10 @@
              ThemeMode="System">
     <Application.Resources>
         <ResourceDictionary>
-            <FontFamily x:Key="AppFont">Segoe UI Variable Text, Segoe UI</FontFamily>
-            <FontFamily x:Key="FluentIcons">Segoe MDL2 Assets</FontFamily>
+            <!-- 拉丁字形用 Segoe 系（Win11 的 Variable 优先），中日韩回退到微软雅黑 UI，避免系统兜底到宋体 -->
+            <FontFamily x:Key="AppFont">Segoe UI Variable Text, Segoe UI, Microsoft YaHei UI, Microsoft YaHei</FontFamily>
+            <!-- Win11 优先 Fluent 图标（字形更现代，同码位），旧系统回退 MDL2 -->
+            <FontFamily x:Key="FluentIcons">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
             <SolidColorBrush x:Key="AccentBrush" Color="#3B82F6"/>
             <SolidColorBrush x:Key="SuccessBrush" Color="#20A66A"/>
             <SolidColorBrush x:Key="WarningBrush" Color="#E6A23C"/>
