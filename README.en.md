@@ -135,7 +135,7 @@ See the [V0.5–V0.6 implementation notes](docs/V0.5-V0.6实现说明.md). The l
 - **Weekly/monthly reports**: a new report sub-page summarizes lag marks, automatic events, top offenders, event mix, long-term behaviors and port/connection activity, with a comparison against the previous period. When retention is too short for a comparison (60 days for a monthly report) the report states that explicitly instead of inventing one. Reports export to a local Markdown file; nothing is uploaded.
 - Reports and Insights read the same stored evidence and agree numerically. All conclusions keep “possible/suspected” wording and carry data-completeness notes (sample coverage, retention, whether history was ever off).
 
-See the [V1.0 implementation notes](docs/V1.0实现说明.md) (Chinese). The local code version is 1.0.0; no GitHub release yet — real 24-hour resident and whole-machine stress acceptance still precede the release.
+See the [V1.0 implementation notes](docs/V1.0实现说明.md) (Chinese). V1.0 shipped inside the [v1.1.0 pre-release](https://github.com/openkaiwu/NetScope/releases/tag/v1.1.0).
 
 ## V1.1 controlled intervention — ending processes (local development build)
 
@@ -144,4 +144,4 @@ See the [V1.0 implementation notes](docs/V1.0实现说明.md) (Chinese). The loc
 - **Hard protections**: critical processes, PID 0/4, NetScope itself, other users' or Session-0 processes and service hosts get no action buttons; missing key evidence always blocks force termination.
 - **Local audit**: every intervention (including refusals) is written to the local `InterventionEvents` table (level, choice, outcome, Win32 error) and cleaned with retention; no command lines, environment variables or document contents. The executor lives only in the foreground app — the Collector IPC exposes an append-only audit write and no termination capability.
 
-See the [V1.1 implementation notes](docs/V1.1实现说明.md) (Chinese). The local code version is 1.1.0; no GitHub release yet — manual acceptance per design §9/§10 precedes the release.
+See the [V1.1 implementation notes](docs/V1.1实现说明.md) (Chinese). Version 1.1.0 is available on [GitHub Releases](https://github.com/openkaiwu/NetScope/releases/tag/v1.1.0) as a pre-release (unsigned development build); it becomes a full release after the real 24-hour, whole-machine stress and manual acceptance runs.
